@@ -1,5 +1,5 @@
 #!/bin/bash
-OUTDIR="../gltut/build"
+OUTDIR="./build"
 
 STARTTIME=$(date +%s)
 COMPILEPARAM=-ggdb
