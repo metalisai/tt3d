@@ -3,12 +3,8 @@
 
 #include <GL/glew.h>
 
-#include "texture.h"
-#include "camera.h"
-#include "entity.h"
-#include "shader.h"
-#include "memory.h"
-#include "input.h"
+#include "engine_platform.h"
+#include "engine.h"
 
 struct ForwardPlus
 {
@@ -16,6 +12,38 @@ struct ForwardPlus
     int workGroupsY;
     GLuint lightBuffer;
     GLuint visibleLightIndicesBuffer;
+};
+
+struct Particle
+{
+    Vec3 localPosition;
+    r32 timer;
+    r32 fade;
+};
+
+struct ParticleVAOData
+{
+    Vec3 position;
+    r32 fade;
+};
+
+struct ParticleSystem
+{
+    LoadedTexture texture;
+
+    Vec3 position;
+    Vec3 velocity;
+    r32 lifeTime;
+    i32 maxParticles;
+    i32 lastDestroyedIndex;
+    i32 lastSpawnedIndex;
+    r32 timeSinceLastParticle;
+
+    GLuint GLBuffer;
+    GLuint VAO;
+
+    Particle particles[1000];
+    ParticleVAOData particleData[1000];
 };
 
 struct Game_State
@@ -30,6 +58,7 @@ struct Game_State
     Shader skyShader;
     Shader normalShader;
     Shader lineShader;
+    Shader particleShader;
 
     Entity barrel[3600];
     Entity terrain;
@@ -41,6 +70,8 @@ struct Game_State
 
     Material barrelMat;
     Material grassMat;
+
+    ParticleSystem particles;
 };
 
 struct Permanent_Storage{
@@ -84,12 +115,12 @@ inline void addEntity(Permanent_Storage* state, Entity* ent);
 static inline void addSurfaceShader(Permanent_Storage* state, Shader* shader);
 extern "C"
 {
-    void init(MemStack* gamemem, int width, int height);
-    void display(MemStack* gamemem, Input* input, float dt);
+    void init(EngineMemory* gamemem, int width, int height);
+    void display(EngineMemory* gamemem, Input* input, float dt);
     void keyboard( unsigned char key, int mouseX, int mouseY );
     void pMouse(int x, int y);
-    void reshape (MemStack* game_memory, int w, int h);
-    void gameExit(MemStack* game_memory);
+    void reshape (EngineMemory* game_memory, int w, int h);
+    void gameExit(EngineMemory* game_memory);
 }
 
 #endif // CORE_H

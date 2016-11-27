@@ -1,8 +1,9 @@
-#include "memory.h"
+#include "shared.h"
 
 void* stackPushSize(MemStack* stack, u64 size)
 {
-    if(stack->pointer + size <= stack->end)
+    void* end = (char*)stack->start + stack->size;
+    if(stack->pointer + size <= end)
     {
         char* ret = stack->pointer;
         stack->pointer += size;
@@ -16,6 +17,5 @@ void stackInit(MemStack* stack, void* start, u64 size)
 {
     stack->start = (char*)start;
     stack->size = size;
-    stack->end = stack->start + size;
     stack->pointer = stack-> start;
 }

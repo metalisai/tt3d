@@ -1,4 +1,4 @@
-#include "audio.h"
+#include "engine.h"
 
 #include <AL/al.h>
 #include <AL/alc.h>
@@ -6,7 +6,6 @@
 #include <sys/stat.h>
 #include <stdio.h>
 #include <sys/types.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #include <stdlib.h>
 
@@ -38,8 +37,8 @@ int initAudio()
       printf("alSourcei : %d", error);
       return 0;
     }
-    Vec3 pos(0.f,0.f,0.f);
-    Vec3 vel(0.f,0.f,0.f);
+    Vec3 pos = vec3(0.f,0.f,0.f);
+    Vec3 vel = vec3(0.f,0.f,0.f);
     float dir[6];
     dir[0] = 1.f;
     dir[1] = 0.f;

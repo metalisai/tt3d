@@ -1,20 +1,20 @@
-#include "mesh.h"
+#include "renderer.h"
 
 #include <assert.h>
 #include <string>
 #include <cstring>
 #include <stdio.h>
-#include <fstream>
-#include <sstream>
-#include <vector>
 #include <cmath>
 
-Mesh::Mesh()
+void meshInit(Mesh* mesh)
 {
-    // TODO: dont fragment memory like that..
-    cold = new MeshCold();
+    mesh->VAO = -1;
+    mesh->AttribBuffer = -1;
+    mesh->ElementBuffer = -1;
+    mesh->cold = new MeshCold(); // TODO: this never gets deleted?
+    mesh->cold->loadedToGPU = false;
+    mesh->cold->data = NULL;
 }
-//TODO: struct created in contructor with new not cleaned up
 
 void openGL_loadMesh(Mesh* mesh)
 {
@@ -88,24 +88,28 @@ void meshRecalculateNormals(Mesh* mesh)
     memset(normalsP,0,sizeof(Vec3)*verts);
     for(int i = 0; i < faces; i++)
     {
-        Vec3 a(vertsP[facesP[i*3+0]].x,vertsP[facesP[i*3+0]].y,vertsP[facesP[i*3+0]].z);
-        Vec3 b(vertsP[facesP[i*3+1]].x,vertsP[facesP[i*3+1]].y,vertsP[facesP[i*3+1]].z);
-        Vec3 c(vertsP[facesP[i*3+2]].x,vertsP[facesP[i*3+2]].y,vertsP[facesP[i*3+2]].z);
+        Vec3 a = vec3(vertsP[facesP[i*3+0]].x,vertsP[facesP[i*3+0]].y,vertsP[facesP[i*3+0]].z);
+        Vec3 b = vec3(vertsP[facesP[i*3+1]].x,vertsP[facesP[i*3+1]].y,vertsP[facesP[i*3+1]].z);
+        Vec3 c = vec3(vertsP[facesP[i*3+2]].x,vertsP[facesP[i*3+2]].y,vertsP[facesP[i*3+2]].z);
 
-        Vec2 texA(texP[facesP[i*3+0]].x,texP[facesP[i*3+0]].y);
-        Vec2 texB(texP[facesP[i*3+1]].x,texP[facesP[i*3+1]].y);
-        Vec2 texC(texP[facesP[i*3+2]].x,texP[facesP[i*3+2]].y);
+        Vec2 texA = vec2(texP[facesP[i*3+0]].x,texP[facesP[i*3+0]].y);
+        Vec2 texB = vec2(texP[facesP[i*3+1]].x,texP[facesP[i*3+1]].y);
+        Vec2 texC = vec2(texP[facesP[i*3+2]].x,texP[facesP[i*3+2]].y);
 
-        Vec3 edge1 = c-a;
-        Vec3 edge2 = b-c;
+        Vec3 edge1;
+        Vec3 edge2;
+        vec3Sub(&edge1, &c, &a);
+        vec3Sub(&edge2, &b, &c);
 
-        Vec2 texEdge1 = texC - texA;
-        Vec2 texEdge2 = texB - texC;
+        Vec2 texEdge1;
+        Vec2 texEdge2;
+        vec2Sub(&texEdge1, &texC, &texA);
+        vec2Sub(&texEdge2, &texB, &texC);
 
-        Vec3 normal = edge2.cross(edge1);
-        if(normal.length() > 0.0001)
+        Vec3 normal = vec3Cross(&edge2,&edge1);
+        if(vec3Mag(&normal) > 0.0001)
         {
-            normal = normal.normalized();
+            normal = vec3Normalized(&normal);
         }
         normalsP[facesP[i*3+0]].x += normal.x;
         normalsP[facesP[i*3+0]].y += normal.y;
@@ -143,11 +147,11 @@ void meshRecalculateNormals(Mesh* mesh)
 
    for(int i = 0; i < verts; i++)
     {
-        Vec3 a(normalsP[i].x,normalsP[i].y,normalsP[i].z);
+        Vec3 a = vec3(normalsP[i].x,normalsP[i].y,normalsP[i].z);
 
-        if(a.length() > 0.0001)
+        if(vec3Mag(&a) > 0.0001)
         {
-            Vec3 normed = a.normalized();
+            Vec3 normed = vec3Normalized(&a);
             normalsP[i].x = normed.x;
             normalsP[i].y = normed.y;
             normalsP[i].z = normed.z;
@@ -162,4 +166,46 @@ void meshRecalculateNormals(Mesh* mesh)
             //printf("Normal vector was 0 lenght!\n");
         }
     }
+}
+
+Mesh* generatePlane()
+{
+    int vertexSize = 4*sizeof(Vec4);
+    int normalSize = 4*sizeof(Vec3);
+    int texSize = 4*sizeof(Vec2);
+    int indexSize = (6 * sizeof(u16));
+    const void* data = malloc(vertexSize+normalSize+indexSize+texSize);
+
+    Vec4* vertices = (Vec4*)data;
+
+    char* data2 = (char*)data;
+    Vec3* normals = (Vec3*)((data2+4*sizeof(Vec4)));
+    Vec2* uv = (Vec2*)(normals + 4);
+    data2 += 4*sizeof(Vec4)+4*sizeof(Vec3)+4*sizeof(Vec2);
+    u16* triangles = (u16*)data2;
+
+    vertices[0] =  vec4(-0.5f,-0.5f,-0.0f,1.0f);
+    vertices[1] =  vec4(0.5f,-0.5f,-0.0f ,1.0f);
+    vertices[2] =  vec4(0.5f,0.5f,0.0f  ,1.0f);
+    vertices[3] =  vec4(-0.5f,0.5f,0.0f ,1.0f);
+
+    uv[0] = vec2(0.0f,0.0f);
+    uv[1] = vec2(1.0f,0.0f);
+    uv[2] = vec2(1.0f,1.0f);
+    uv[3] = vec2(0.0f,1.0f);
+
+    triangles[0] = 0;
+    triangles[1] = 1;
+    triangles[2] = 2;
+    triangles[3] = 0;
+    triangles[4] = 2;
+    triangles[5] = 3;
+
+    Mesh* mesh = new Mesh;
+    meshInit(mesh);
+    mesh->cold->vertices = 4;
+    mesh->cold->normals = 4;
+    mesh->faces = 2;
+    mesh->cold->data = (void*)data;
+    return mesh;
 }

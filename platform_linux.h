@@ -6,7 +6,6 @@
 
 #include <X11/Xlib.h>
 
-
 #include <GL/glew.h>
 #include <GL/gl.h>
 #include <GL/glx.h>
@@ -14,12 +13,17 @@
 
 //#include "core.h"
 //#include "core.hpp"
-#include "memory.h"
+#include "engine_platform.h"
 
 struct PlatformState
 {
     Display* display;
     Window win;
+};
+
+struct LinuxFileHandle
+{
+    int fileHandle;
 };
 
 Window Linux_CreateWindow(Display* display, int width, int height, const char* windowTitle);

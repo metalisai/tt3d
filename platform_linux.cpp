@@ -1,9 +1,6 @@
 #include "platform_linux.h"
 
-#include "types.h"
-#include "ttMath.h"
-
-#include "input.h"
+#include "shared.h"
 
 #include <dlfcn.h>
 #include <string.h>
@@ -11,18 +8,72 @@
 #include <time.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 int (*functionPtr)(int,int);
 
-void (*init    ) (MemStack* gamemem, int width, int height);
-void (*display ) (MemStack* gamemem, Input* input, float dt);
+void (*init    ) (EngineMemory* gamemem, int width, int height);
+void (*display ) (EngineMemory* gamemem, Input* input, float dt);
 void (*keyboard) ( unsigned char key, int mouseX, int mouseY );
 void (*pMouse  ) (int x, int y);
-void (*reshape ) (MemStack* game_memory, int w, int h);
+void (*reshape ) (EngineMemory* game_memory, int w, int h);
 
 void* dlHandle = 0;
 timespec lastModified;
 const char* codeFile = "./libgame.so";
+
+static PLATFORM_OPEN_FILE(linuxOpenFile) // macro defined in engine_platform.h
+{
+    PlatformFileHandle result = {};
+
+    LinuxFileHandle* handle = (LinuxFileHandle*)malloc(sizeof(LinuxFileHandle));
+    handle->fileHandle = open(fileName, O_RDONLY, S_IREAD);
+    if(handle->fileHandle > 0)
+    {
+        result.noErrors = true;
+        result.PlatformData = handle;
+    }
+    else
+    {
+        result.noErrors = false;
+    }
+
+    return result;
+}
+
+static PLATFORM_GET_FILE_SIZE(linuxGetFileSize)
+{
+    LinuxFileHandle* fhandle = (LinuxFileHandle*)fh->PlatformData;
+    struct stat fileStat;
+    int statRes = fstat(fhandle->fileHandle, &fileStat);
+    if(statRes >= 0)
+    {
+        return fileStat.st_size;
+    }
+    return -1;
+}
+
+static PLATFORM_READ_DATA_FROM_FILE(linuxReadFromFile)
+{
+    LinuxFileHandle* fhandle = (LinuxFileHandle*)source->PlatformData;
+    int res = lseek(fhandle->fileHandle, offset, SEEK_SET);
+    if(res != -1)
+    {
+        res = read(fhandle->fileHandle, dest, size);
+        if(res != -1)
+            return;
+    }
+    printf("Error when reading from while\n");
+    source->noErrors = false;
+}
+
+static PLATFORM_CLOSE_FILE(linuxCloseFile) // macro defined in engine_platform.h
+{
+    LinuxFileHandle* fhandle = (LinuxFileHandle*)handle->PlatformData;
+    close(fhandle->fileHandle);
+    free((void*)fhandle);
+}
 
 void loadCode()
 {
@@ -45,22 +96,29 @@ void loadCode()
     struct stat attrib;
     stat(codeFile, &attrib);
     lastModified = attrib.st_mtim;
-
-    init        = (void(*)(MemStack* gamemem, int width, int height))       dlsym(dlHandle, "init");
-    display     = (void(*)(MemStack* gamemem, Input* input, float dt))      dlsym(dlHandle, "display");
+    init        = (void(*)(EngineMemory* gamemem, int width, int height))       dlsym(dlHandle, "init");
+    display     = (void(*)(EngineMemory* gamemem, Input* input, float dt))      dlsym(dlHandle, "display");
     keyboard    = (void(*)( unsigned char key, int mouseX, int mouseY ))    dlsym(dlHandle, "keyboard");
     pMouse      = (void(*)(int x, int y))                                   dlsym(dlHandle, "pMouse");
-    reshape     = (void(*)(MemStack* game_memory, int w, int h))            dlsym(dlHandle, "reshape");
+    reshape     = (void(*)(EngineMemory* game_memory, int w, int h))            dlsym(dlHandle, "reshape");
+    //dlclose(codeFile);
+
 }
 
 int main()
 {
     loadCode();
 
-    MemStack gameMemory;
-    size_t size = 50*1024LL*1024LL;
-    void* gmem = malloc(size); // 50MB
-    stackInit(&gameMemory, gmem, size);
+    //MemStack gameMemory;
+    size_t size = 200LL*1024LL*1024LL;
+    EngineMemory* eMem = (EngineMemory*)malloc(size); // 50MB
+    eMem->gameState = (struct GameState*)((char*)eMem+sizeof(EngineMemory));
+    eMem->transientState = (struct TransientState*)((char*)eMem->gameState+60LL*1024LL*1024LL);
+    eMem->platformApi.openFile      = (platformOpenFile*) linuxOpenFile;
+    eMem->platformApi.closeFile     = (platformCloseFile*) linuxCloseFile;
+    eMem->platformApi.readFromFile  = (platformReadFromFile*) linuxReadFromFile;
+    eMem->platformApi.getFileSize   = (platformGetFileSize*) linuxGetFileSize;
+    //stackInit((MemStack*)eMem->gameState, ((char*)eMem->gameState)+sizeof(MemStack), 60LL*1024LL*1024LL-sizeof(MemStack));
 
     Input input;
     memset(&input, 0, sizeof(input));
@@ -82,8 +140,8 @@ int main()
         printf("GL 4.3 NOT Supported, exiting!\n");
         return -1;
     }
-    init(&gameMemory,1024,768);
-    reshape(&gameMemory,1024,768);
+    init(eMem,1024,768);
+    reshape(eMem,1024,768);
     Atom wmDeleteMessage = XInternAtom(state.display, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(state.display, state.win, &wmDeleteMessage, True);
 
@@ -141,7 +199,7 @@ int main()
             case ConfigureNotify:
                 XConfigureEvent xce = event.xconfigure;
                 // TODO: this event might not always be a resize event?
-                reshape(&gameMemory,xce.width,xce.height);
+                reshape(eMem,xce.width,xce.height);
                 break;
             }
         }
@@ -149,7 +207,7 @@ int main()
         timespec last = start;
         clock_gettime(CLOCK_MONOTONIC, &start);
         float seconds = start.tv_sec-last.tv_sec+(start.tv_nsec-last.tv_nsec)/1000000000.0;
-        display(&gameMemory, &input, seconds);
+        display(eMem, &input, seconds);
         glXSwapBuffers(state.display, state.win);
 
         for(int i = 0; i < KEY_COUNT; i++)
@@ -229,3 +287,5 @@ Window Linux_CreateWindow(Display* display, int width, int height, const char* w
     glClear     ( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     return win;
 }
+
+

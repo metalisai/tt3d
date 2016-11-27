@@ -1,4 +1,4 @@
-#include "terrain.h"
+#include "engine.h"
 
 #define STB_PERLIN_IMPLEMENTATION
 #include "lib/stb_perlin.h"
@@ -33,8 +33,8 @@ Mesh* generateTerrainMesh()
     {
         for(int j = 0; j < height; j++)
         {
-            vertices[j + i * height] = Vec4(j*scale, /*stb_perlin_noise3((r32)j / 10.0f, (r32)i / 10.0f, 0.0f)*scale*5.0f*/0.0f, i*scale, 1.0f);
-            uv[j + i * height] = Vec2(j % 2 == 1 ? 1.f : 0.f, i % 2 == 1 ? 1.f : 0.f);
+            vertices[j + i * height] = vec4(j*scale, /*stb_perlin_noise3((r32)j / 10.0f, (r32)i / 10.0f, 0.0f)*scale*5.0f*/0.0f, i*scale, 1.0f);
+            uv[j + i * height] = vec2(j % 2 == 1 ? 1.f : 0.f, i % 2 == 1 ? 1.f : 0.f);
 
             if (i != (height-1) && j != (width-1))
             {
@@ -49,9 +49,10 @@ Mesh* generateTerrainMesh()
         }
     }
     for(int i = 0; i < width*height;i++)
-        normals[i] = Vec3(1.0f,0.0f,0.0f);
+        normals[i] = vec3(1.0f,0.0f,0.0f);
 
     Mesh* mesh = new Mesh;
+    meshInit(mesh);
     mesh->cold->vertices = width*height;
     mesh->cold->normals = width*height;
     mesh->faces = (width-1) * (height-1)*2;

@@ -1,10 +1,16 @@
-#include "transform.h"
+#include "renderer.h"
 
-Transform::Transform()
+void transformInit(Transform* transform)
 {
-    updateTranslationMatrix(this);
-    updateScaleMatrix(this);
-    updateRotationMatrix(this);
+    transform->position = vec3(0.f,0.f,0.f);
+    transform->scale = vec3(1.f,1.f,1.f);
+    transform->rotation = quaternion(1.f,0.f,0.f,0.f);
+    transform->dirty = true;
+
+    updateTranslationMatrix(transform);
+    updateScaleMatrix(transform);
+    updateRotationMatrix(transform);
+    //transform->modelMatrix = transform->translationMatrix*transform->rotationMatrix*transform->scaleMatrix;
 }
 
 void updateTranslationMatrix(Transform* transform)
@@ -33,7 +39,7 @@ void updateTranslationMatrix(Transform* transform)
 
 void updateRotationMatrix(Transform* transform)
 {
-    transform->rotationMatrix = transform->rotation.toMat4();
+    mat4FromQuaternion(&transform->rotationMatrix, &transform->rotation);
 }
 
 void updateScaleMatrix(Transform* transform)
@@ -73,7 +79,10 @@ Mat4* calculateModelMatrix(Transform* transform)
         updateTranslationMatrix(transform);
         updateScaleMatrix(transform);
         updateRotationMatrix(transform);
-        transform->modelMatrix = transform->translationMatrix*transform->rotationMatrix*transform->scaleMatrix;
+        Mat4 res;
+        mat4Mul(&res, &transform->translationMatrix, &transform->rotationMatrix);
+        mat4Mul(&transform->modelMatrix, &res, &transform->scaleMatrix);
+        //transform->modelMatrix = transform->translationMatrix*transform->rotationMatrix*transform->scaleMatrix;
         transform->dirty = false;
         return &transform->modelMatrix;
     }

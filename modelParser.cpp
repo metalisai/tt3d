@@ -2,8 +2,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-#include "mesh.h"
-#include "ttMath.h"
+#include "renderer.h"
 
 // ignores until delimiter
 // returns false if end of file was reached
@@ -367,6 +366,7 @@ Mesh* loadObjMesh(const char* fileName)
     fclose(file);
 
     Mesh* ret = new Mesh;
+    meshInit(ret);
     ret->cold->vertices = verts;
     ret->faces = faces;
     ret->cold->normals = normals;
@@ -398,6 +398,7 @@ Mesh* loadMesh(const char* fileName)
     fread(data, 1, byteCount, file);
 
     Mesh* mesh = new Mesh();
+    meshInit(mesh);
     mesh->cold->data = data;
     mesh->cold->vertices = verts;
     mesh->faces = faces;

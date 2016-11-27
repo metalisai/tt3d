@@ -1,13 +1,12 @@
-#include "shader.h"
+#include "renderer.h"
+#include "engine_platform.h"
+#include <stdio.h>
 
-#include <fstream>
-#include <sstream>
-
-GLuint createShader(GLenum eShaderType, const std::string &strShaderFile)
-{
+GLuint createShader(GLenum eShaderType, const char* shaderData, int fsize)
+{  
     GLuint shader = glCreateShader(eShaderType);
-    const char *strFileData = strShaderFile.c_str();
-    glShaderSource(shader, 1, &strFileData, NULL);
+    const char *strFileData = shaderData;
+    glShaderSource(shader, 1, &strFileData, &fsize);
 
     glCompileShader(shader);
 
@@ -29,37 +28,29 @@ GLuint createShader(GLenum eShaderType, const std::string &strShaderFile)
         case GL_FRAGMENT_SHADER: strShaderType = "fragment"; break;
         }
 
-        fprintf(stderr, "Compile failure in %s shader:\n%s\n", strShaderType, strInfoLog);
+        printf("Compile failure in %s shader:\n%s\n", strShaderType, strInfoLog);
         delete[] strInfoLog;
     }
 
     return shader;
 }
 
-GLuint loadShader(GLenum eShaderType, const std::string &strShaderFilename)
+GLuint loadShader(GLenum eShaderType, const char* shaderFileName)
 {
-    std::string strFilename = strShaderFilename;
-    std::ifstream shaderFile(strFilename.c_str());
-    std::stringstream shaderData;
-    shaderData << shaderFile.rdbuf();
-    shaderFile.close();
-
-    try
-    {
-        return createShader(eShaderType, shaderData.str());
-    }
-    catch(std::exception &e)
-    {
-        fprintf(stderr, "%s\n", e.what());
-        throw;
-    }
+    PlatformFileHandle fh = Platform.openFile(shaderFileName);
+    int size = Platform.getFileSize(&fh);
+    void* fmem = malloc(size);
+    Platform.readFromFile(&fh, 0, size, fmem);
+    // TODO: check errors
+    return createShader(eShaderType, (char*)fmem, size);
+    free(fmem);
 }
 
-GLuint createProgram(const std::vector<GLuint> &shaderList)
+GLuint createProgram(GLuint* shaderList, int pcount)
 {
     GLuint program = glCreateProgram();
 
-    for(size_t iLoop = 0; iLoop < shaderList.size(); iLoop++)
+    for(size_t iLoop = 0; iLoop < pcount; iLoop++)
         glAttachShader(program, shaderList[iLoop]);
 
     glLinkProgram(program);
@@ -73,11 +64,11 @@ GLuint createProgram(const std::vector<GLuint> &shaderList)
 
         GLchar *strInfoLog = new GLchar[infoLogLength + 1];
         glGetProgramInfoLog(program, infoLogLength, NULL, strInfoLog);
-        fprintf(stderr, "Linker failure: %s\n", strInfoLog);
+        printf("Linker failure: %s\n", strInfoLog);
         delete[] strInfoLog;
     }
 
-    for(size_t iLoop = 0; iLoop < shaderList.size(); iLoop++)
+    for(size_t iLoop = 0; iLoop < pcount; iLoop++)
         glDetachShader(program, shaderList[iLoop]);
 
     return program;
@@ -85,14 +76,14 @@ GLuint createProgram(const std::vector<GLuint> &shaderList)
 
 void initializeComputeProgram(Shader* shader, const char* computeFile, ShaderType type)
 {
-    std::vector<GLuint> shaderList;
+    GLuint shaderList[1];
     shader->type = type;
-    shaderList.push_back(loadShader(GL_COMPUTE_SHADER, computeFile));
+    shaderList[0] = loadShader(GL_COMPUTE_SHADER, computeFile);
     //shaderList.push_back(LoadShader(GL_FRAGMENT_SHADER, fragFile));
-    shader->program = createProgram(shaderList);
-    for (std::vector<GLuint>::iterator it = shaderList.begin() ; it != shaderList.end(); ++it)
+    shader->program = createProgram(shaderList, 1);
+    for (int i = 0; i < 1; ++i)
     {
-        glDeleteShader(*it);
+        glDeleteShader(shaderList[i]);
     }
     switch(type)
     {
@@ -119,14 +110,20 @@ void initializeComputeProgram(Shader* shader, const char* computeFile, ShaderTyp
 
 void initializeProgram(Shader* shader, const char* vertFile, const char* fragFile, ShaderType type)
 {
-    std::vector<GLuint> shaderList;
+    GLuint shaderList[3];
+    int pcount = 2;
     shader->type = type;
-    shaderList.push_back(loadShader(GL_VERTEX_SHADER, vertFile));
-    shaderList.push_back(loadShader(GL_FRAGMENT_SHADER, fragFile));
-    shader->program = createProgram(shaderList);
-    for (std::vector<GLuint>::iterator it = shaderList.begin() ; it != shaderList.end(); ++it)
+    shaderList[0] = loadShader(GL_VERTEX_SHADER, vertFile);
+    shaderList[1] = loadShader(GL_FRAGMENT_SHADER, fragFile);
+    if(type == ST_Particle)
     {
-        glDeleteShader(*it);
+        shaderList[2] = loadShader(GL_GEOMETRY_SHADER, "shaders/particle_geo.glsl");
+        pcount = 3;
+    }
+    shader->program = createProgram(shaderList, pcount);
+    for (int i = 0; i < pcount; ++i)
+    {
+        glDeleteShader(shaderList[i]);
     }
     switch(type)
     {
@@ -163,6 +160,14 @@ void initializeProgram(Shader* shader, const char* vertFile, const char* fragFil
             printf("projM_unif location not found %s %s\n",vertFile,fragFile);*/
         if(shader->postproc.lightProjM_unif == 0xFFFFFFFF)
                     printf("lightProjM_unif location not found %s %s\n",vertFile,fragFile);
+        break;
+    case ST_Particle:
+        shader->surface.lightDirUnif = glGetUniformLocation(shader->program, "lightDir");
+        shader->surface.transformMatrixUnif = glGetUniformLocation(shader->program, "transformMatrix");
+        shader->surface.perspectiveMatrixUnif = glGetUniformLocation(shader->program, "perspectiveMatrix");
+        shader->surface.diffuseTexture = glGetUniformLocation(shader->program, "tex");
+        shader->surface.normalTexture = glGetUniformLocation(shader->program, "normalSampler");
+        shader->surface.viewMatixUnif = glGetUniformLocation(shader->program, "viewMat");
         break;
     case ST_Skydome:
         shader->skydome.scaleMatrix           = glGetUniformLocation(shader->program, "scaleMatrix"         );

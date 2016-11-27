@@ -2,50 +2,35 @@
 
 #include <stdio.h>
 #include <math.h>
-
-#include "modelparser.h"
-#include "mesh.h"
-#include "terrain.h"
-#include "material.h"
-#include "platform_linux.h"
-//#include "voxel_terrain.cpp"
-#include "primitives.h"
-#include "debug.h"
-#include "input.h"
-
-#include "text.h"
-#include "audio.h"
-
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 //#include "stb_image.h"
 
 #define ARRAY_COUNT( array ) (sizeof( array ) / (sizeof( array[0] )))
 
-Mesh* domeMesh = loadMesh("sphere.tt");
-Mesh* mesh = loadMesh("barra/barra.tt");
-//Mesh* mesh = loadObjMesh("monkey.obj");
-Mesh* terrainMesh = generateTerrainMesh();
+Mesh *domeMesh, *mesh, *terrainMesh;
 
-//Mesh* terrainMesh[10][10]/* = generateJunk(0,0,0)*/;
+
+//Mesh *terrainMesh[10][10]/*= generateJunk(0,0,0)*/;
 
 #define SHADOWMAP_RES   2048
 
-inline void addEntity(Permanent_Storage* state, Entity* ent)
+inline void addEntity(Permanent_Storage *state, Entity *ent)
 {
     state->entities[state->numEntities] = ent;
     ++state->numEntities;
 }
 
-static void addSurfaceShader(Permanent_Storage* state, Shader* shader)
+static void addSurfaceShader(Permanent_Storage *state, Shader *shader)
 {
     state->shaders[state->numShaders] = shader;
     ++state->numShaders;
 }
 
-void deleteFrameBuffer(Permanent_Storage* gstate)
+void deleteFrameBuffer(Permanent_Storage *gstate)
 {
     glDeleteFramebuffers(1, &gstate->fbo);
     glDeleteTextures(1, &gstate->fbo_texture);
@@ -54,20 +39,20 @@ void deleteFrameBuffer(Permanent_Storage* gstate)
     glDeleteTextures(1, &gstate->rbo_depth);
 }
 
-void deleteShadowBuffer(Permanent_Storage* gstate)
+void deleteShadowBuffer(Permanent_Storage *gstate)
 {
     glDeleteFramebuffers(1, &gstate->shadow_fbo);
     glDeleteTextures(1, &gstate->shadow_fbo_depth);
 }
 
-void deleteZPassBuffer(Permanent_Storage* gstate)
+void deleteZPassBuffer(Permanent_Storage *gstate)
 {
     glDeleteFramebuffers(1, &gstate->zprepass_fbo);
     glDeleteTextures(1, &gstate->zprepass_fbo_depth);
 }
 
 // TODO: make compressed version to create a depth buffer fbo
-void genZPassBuffer(Permanent_Storage* gstate, int width, int height)
+void genZPassBuffer(Permanent_Storage *gstate, int width, int height)
 {
     glActiveTexture(GL_TEXTURE0);
     GLfloat cols[4];
@@ -107,14 +92,14 @@ struct PointLight {
     Vec4 paddingAndRadius;
 };
 
-void genForwardPlusBuffers(Permanent_Storage* state, int width, int height)
+void genForwardPlusBuffers(Permanent_Storage *state, int width, int height)
 {
     // TODO: this
     typedef int VisibleIndex;
 
     state->fplus.workGroupsX = (width + (width % FPLUS_TILESIZE)) / FPLUS_TILESIZE;
     state->fplus.workGroupsY = (height + (height % FPLUS_TILESIZE)) / FPLUS_TILESIZE;
-    size_t numberOfTiles = state->fplus.workGroupsX * state->fplus.workGroupsY;
+    size_t numberOfTiles = state->fplus.workGroupsX  *state->fplus.workGroupsY;
     printf("tiles %d tilesX %d\n",numberOfTiles,state->fplus.workGroupsX);
 
     // Generate our shader storage buffers
@@ -132,7 +117,7 @@ void genForwardPlusBuffers(Permanent_Storage* state, int width, int height)
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 
-void genShadowBuffer(Permanent_Storage* gstate, int width, int height)
+void genShadowBuffer(Permanent_Storage *gstate, int width, int height)
 {
     glActiveTexture(GL_TEXTURE0);
     GLfloat cols[4];
@@ -140,8 +125,6 @@ void genShadowBuffer(Permanent_Storage* gstate, int width, int height)
     cols[1] = 1.0;
     cols[2] = 1.0;
     cols[3] = 1.0;
-
-    //glBor
 
     glGenTextures(1, &gstate->shadow_fbo_depth);
     glBindTexture(GL_TEXTURE_2D, gstate->shadow_fbo_depth);
@@ -166,7 +149,7 @@ void genShadowBuffer(Permanent_Storage* gstate, int width, int height)
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 }
 
-void genFrameBuffer(Permanent_Storage* gstate, int screenW, int screenH)
+void genFrameBuffer(Permanent_Storage *gstate, int screenW, int screenH)
 {
     glActiveTexture(GL_TEXTURE0);
     glGenTextures(1, &gstate->fbo_texture);
@@ -223,28 +206,100 @@ void genFrameBuffer(Permanent_Storage* gstate, int screenW, int screenH)
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 }
 
-void initLights(Permanent_Storage* state)
+void initLights(Permanent_Storage *state)
 {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, state->fplus.lightBuffer);
     PointLight *pointLights = (PointLight*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_WRITE);
 
     for (int i = 0; i < NUM_LIGHTS; i++) {
         PointLight &light = pointLights[i];
-        light.position = Vec4((random()%10000)/100.f,0.5f,(random()%10000)/100.f, 1.0f);
-        light.color = Vec4(1.0f -(random()%1000)/1000.f, 1.0f - (random()%1000)/1000.f, 1.0f - (random()%1000)/1000.f, 1.0f);
-        light.paddingAndRadius = Vec4(Vec3(0.0f,0.0f,0.0f), 5.f); // TODO: add light radius
+        light.position = vec4((random()%10000)/100.f,0.5f,(random()%10000)/100.f, 1.0f);
+        light.color = vec4(1.0f -(random()%1000)/1000.f, 1.0f - (random()%1000)/1000.f, 1.0f - (random()%1000)/1000.f, 1.0f);
+        light.paddingAndRadius = vec4FromVec3AndW(vec3(0.0f,0.0f,0.0f), 5.f); // TODO: add light radius
     }
     glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 
-void init(MemStack* gamemem, int width, int height)
+void createParticleSystem(ParticleSystem *particles)
 {
-    assert(gamemem->pointer == gamemem->start);
-    memset(gamemem->start, 0, gamemem->size);
+    int vertices = particles->maxParticles;
 
-    Permanent_Storage* state = (Permanent_Storage*)stackPushSize(gamemem, sizeof(Permanent_Storage));
+    u32 bufferSize = vertices*(sizeof(Vec3)+sizeof(r32));
+    //void* data = malloc(bufferSize);
+    glGenBuffers(1, &particles->GLBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, particles->GLBuffer);
+    glBufferData(GL_ARRAY_BUFFER, bufferSize, particles->particleData, GL_DYNAMIC_DRAW);
+    glGenVertexArrays(1, &particles->VAO);
+    glBindVertexArray(particles->VAO);
+    //glBindBuffer(GL_ARRAY_BUFFER, 0);
+    /*glGenBuffers(1, &mesh->ElementBuffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ElementBuffer);
+    int byteOffset = vertices*sizeof(Vec4)+vertices*sizeof(Vec3)+vertices*sizeof(Vec2);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->faces*3*2, ((char*)data)+byteOffset, GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);*/
+    /*glGenVertexArrays(1, &mesh->VAO);
+    glBindVertexArray(mesh->VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, mesh->AttribBuffer);*/
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    //glEnableVertexAttribArray(2);
+    //glEnableVertexAttribArray(3);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vec3)+sizeof(r32), 0);
+    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(Vec3)+sizeof(r32), (GLvoid*)(0+sizeof(Vec3)));
+    //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ElementBuffer);
+    //glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+}
 
+void renderAndUpdateParticleSystem(ParticleSystem *particles, r32 dt)
+{
+    float particleSpawnRate = 0.5f;
+    particles->timeSinceLastParticle +=dt;
+    if(particles->timeSinceLastParticle >= particleSpawnRate)
+    {
+        particles->particles[particles->lastDestroyedIndex].localPosition =  vec3(0.f,0.f,0.f);
+        particles->particles[particles->lastDestroyedIndex].timer = 0.f;
+        particles->particles[particles->lastDestroyedIndex].fade = 1.f;
+        particles->lastSpawnedIndex = particles->lastDestroyedIndex;
+        particles->lastDestroyedIndex = (particles->lastDestroyedIndex+1)%particles->maxParticles;
+        //printf("Particle spawned\n");
+    }
+
+    for(int i = 0; i < particles->maxParticles; i++)
+    {
+        particles->particles[i].timer += dt;
+        particles->particles[i].fade = 1.f-particles->particles[i].timer/particles->lifeTime;
+        Vec3 scaledVel;
+        vec3Scale(&scaledVel, &particles->velocity, dt);
+        vec3Add(&particles->particles[i].localPosition, &particles->particles[i].localPosition, &scaledVel);
+        //particles->particleData[i].position = particles->position+particles->particles[i].localPosition;
+        particles->particleData[i].fade = 1.f;
+    }
+
+    //printf("P0a pos %f %f %f \n",particles->particleData[0].position.x,particles->particleData[0].position.y,particles->particleData[0].position.z);
+
+    int vertices = particles->maxParticles;
+    u32 bufferSize = vertices*(sizeof(Vec3)+sizeof(r32));
+
+    glBindBuffer(GL_ARRAY_BUFFER, particles->GLBuffer);
+    glBindVertexArray(particles->VAO);
+    glBufferData(GL_ARRAY_BUFFER, bufferSize, &particles->particleData, GL_DYNAMIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glDrawArrays(GL_POINTS, 0, particles->maxParticles);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+PlatformApi Platform;
+void init(EngineMemory *mem, int width, int height)
+{
+    Platform = mem->platformApi;
+    memset(mem->gameState, 0, 100LL*1024LL*1024LL);
+    Permanent_Storage *state = (Permanent_Storage*)mem->gameState;
+
+    cameraInitialize(&(state->main_cam));
     state->main_cam.FOV = 45.f;
     state->main_cam.nearPlane = 0.1f;
     state->main_cam.farPlane = 200.f;
@@ -271,26 +326,30 @@ void init(MemStack* gamemem, int width, int height)
     genForwardPlusBuffers(state, width, height);
     initLights(state);
 
-    state->texturePool = createTexturePool(1024, gamemem);
+    stackInit((MemStack*)mem->transientState, ((char*)mem->transientState)+sizeof(MemStack), 30LL*1024LL*1024LL);
+    state->texturePool = createTexturePool(1024, (MemStack*)mem->transientState);
     state->deferred = true;
 
     setupDebug();
 
     InitText();
-    //initAudio();
 
-    LoadedTexture* groundTexture = loadTextureToMemory(state->texturePool, "grass.png");
+    domeMesh = loadMesh("sphere.tt");
+    mesh = loadMesh("barra/barra.tt");
+    terrainMesh = generateTerrainMesh();
+
+    LoadedTexture *groundTexture = loadTextureToMemory(state->texturePool, "grass.png");
     openGL_LoadTexture(groundTexture);
-    LoadedTexture* barrelTexture = loadTextureToMemory(state->texturePool, "barra/barra.jpg");
+    LoadedTexture *barrelTexture = loadTextureToMemory(state->texturePool, "barra/barra.jpg");
     openGL_LoadTexture(barrelTexture);
-    LoadedTexture* stoneTexture = loadTextureToMemory(state->texturePool, "textures/stone.jpg");
+    LoadedTexture *stoneTexture = loadTextureToMemory(state->texturePool, "textures/stone.jpg");
     openGL_LoadTexture(stoneTexture);
-    LoadedTexture* brickDiffuseTexture = loadTextureToMemory(state->texturePool, "textures/brick_diff.jpg");
+    LoadedTexture *brickDiffuseTexture = loadTextureToMemory(state->texturePool, "textures/brick_diff.jpg");
     openGL_LoadTexture(brickDiffuseTexture);
-    LoadedTexture* brickNormalTexture = loadTextureToMemory(state->texturePool, "textures/brick_norm.jpg");
+    LoadedTexture *brickNormalTexture = loadTextureToMemory(state->texturePool, "textures/brick_norm.jpg");
     openGL_LoadTexture(brickNormalTexture);
 
-    Mesh* planeMesh = generatePlane();
+    Mesh *planeMesh = generatePlane();
 
     initializeProgram(&state->textShader,"shaders/textvert.glsl", "shaders/textfrag.glsl", ST_Surface);
     initializeProgram(&state->postProcShader,"shaders/postproc_vert.glsl", "shaders/postproc_frag.glsl", ST_PostProc);
@@ -303,6 +362,7 @@ void init(MemStack* gamemem, int width, int height)
     initializeProgram(&state->game.skyShader,"shaders/skydomevert.glsl", "shaders/skydomefrag.glsl", ST_Skydome);
     initializeProgram(&state->game.normalShader,"shaders/vert_normal.glsl", "shaders/frag_normal.glsl", ST_Surface);
     initializeProgram(&state->game.lineShader,"shaders/linevert.glsl", "shaders/linefrag.glsl", ST_Surface);
+    initializeProgram(&state->game.particleShader,"shaders/particle_vert.glsl", "shaders/particle_frag.glsl", ST_Particle);
 
     initializeProgram(&state->game.texShaderForw,"shaders/vert.glsl", "shaders/frag_forward.glsl", ST_Surface);
 
@@ -327,8 +387,8 @@ void init(MemStack* gamemem, int width, int height)
         for(int j = 0; j < 60; j++)
         {
             state->game.barrel[k].mesh = *mesh;
-            state->game.barrel[k].transform = Transform();
-            state->game.barrel[k].transform.position = Vec3((float)i+10.0f,0.f,(float)j+10.0f);
+            transformInit(&state->game.barrel[k].transform);
+            state->game.barrel[k].transform.position =  vec3((float)i+10.0f,0.f,(float)j+10.0f);
             state->game.barrel[k].material.numTextures = 1;
             state->game.barrel[k].material.shader = &state->game.texShader;
             state->game.barrel[k].material.texture_handle[0] = barrelTexture->gl_handle;
@@ -338,23 +398,24 @@ void init(MemStack* gamemem, int width, int height)
     }
 
     state->game.testBarrel.mesh = *mesh/*planeMesh*/;
-    state->game.testBarrel.transform = Transform();
+    transformInit(&state->game.testBarrel.transform);
     state->game.testBarrel.material.numTextures = 1;
     state->game.testBarrel.material.shader = &state->game.texShader;
     state->game.testBarrel.material.texture_handle[0] = barrelTexture->gl_handle;
     addEntity(state, &state->game.testBarrel);
 
     state->game.terrain.mesh = *terrainMesh;
-    state->game.terrain.transform = Transform();
-    state->game.terrain.transform.position = Vec3(0.f,0.f,0.f);
+    transformInit(&state->game.terrain.transform);
+    printf("scalex %f",state->game.terrain.transform.scale.x);
+    state->game.terrain.transform.position =  vec3(0.f,0.f,0.f);
     state->game.terrain.material.numTextures = 1;
     state->game.terrain.material.shader = &state->game.texShader;
     state->game.terrain.material.texture_handle[0] = groundTexture->gl_handle;
     addEntity(state, &state->game.terrain);
 
     state->game.wall.mesh = *planeMesh;
-    state->game.wall.transform = Transform();
-    state->game.wall.transform.position = Vec3(10.0f,5.0f,0.0f);
+    transformInit(&state->game.wall.transform);
+    state->game.wall.transform.position =  vec3(10.0f,5.0f,0.0f);
     state->game.wall.material.numTextures = 2;
     state->game.wall.material.shader = &state->game.normalShader;
     state->game.wall.material.texture_handle[0] = brickDiffuseTexture->gl_handle;
@@ -362,33 +423,46 @@ void init(MemStack* gamemem, int width, int height)
     addEntity(state, &state->game.wall);
 
     state->game.wall2.mesh = *planeMesh;
-    state->game.wall2.transform = Transform();
-    state->game.wall2.transform.position = Vec3(9.0f,5.0f,0.0f);
+    transformInit(&state->game.wall2.transform);
+    state->game.wall2.transform.position =  vec3(9.0f,5.0f,0.0f);
     state->game.wall2.material.numTextures = 2;
     state->game.wall2.material.shader = &state->game.texShader;
     state->game.wall2.material.texture_handle[0] = brickDiffuseTexture->gl_handle;
     addEntity(state, &state->game.wall2);
 
     state->game.dome.mesh = *domeMesh;
-    state->game.dome.transform = Transform();
-    state->game.dome.transform.position = Vec3(0.0f,0.0f,0.0f);;
+    transformInit(&state->game.dome.transform);
+    state->game.dome.transform.position =  vec3(0.0f,0.0f,0.0f);;
     state->game.dome.material.numTextures = 0;
     state->game.dome.material.shader = &state->game.skyShader;
     //dome.transform.scale = Vec3(3500.0f,3500.0f,3500.0f);
-    state->game.dome.transform.scale = Vec3(200.0f,200.0f,200.0f);
+    state->game.dome.transform.scale =  vec3(200.0f,200.0f,200.0f);
     //addEntity(&dome);
 
     state->game.earth.mesh = *domeMesh;
-    state->game.earth.transform = Transform();
-    state->game.earth.transform.position = Vec3(0.0f,0.0f,0.0f);;
+    transformInit(&state->game.earth.transform);
+    state->game.earth.transform.position =  vec3(0.0f,0.0f,0.0f);;
     state->game.earth.material.numTextures = 0;
     state->game.earth.material.shader = &state->game.texShader;
     state->game.earth.material.numTextures = 1;
     state->game.earth.material.texture_handle[0] = stoneTexture->gl_handle;
-    //earth.transform.scale = Vec3(3000.0f,3000.0f,3000.0f);
+    //earth.transform.scale =  vec3(3000.0f,3000.0f,3000.0f);
     float planetSize = 15000.f;
-    state->game.earth.transform.scale = Vec3(planetSize,planetSize,planetSize);
+    state->game.earth.transform.scale =  vec3(planetSize,planetSize,planetSize);
     //addEntity(&earth);
+
+    state->game.particles.lifeTime = 10.f;
+    state->game.particles.maxParticles = 1000;
+    state->game.particles.lastSpawnedIndex = 0;
+    state->game.particles.position =  vec3(10.f,0.f,10.f);
+    state->game.particles.texture = *barrelTexture;
+    state->game.particles.velocity =  vec3(0.2f,1.0f,0.0f);
+    state->game.particles.lastDestroyedIndex = 0;
+    state->game.particles.lastSpawnedIndex = 0;
+    state->game.particles.timeSinceLastParticle = 0.0f;
+    createParticleSystem(&state->game.particles);
+
+
 
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
@@ -399,20 +473,27 @@ void init(MemStack* gamemem, int width, int height)
     glDepthFunc(GL_LEQUAL);
     glDepthRange(0.0f, 1.0f);
 
+    if(!glCreateShader(GL_GEOMETRY_SHADER)){
+        printf("Creating geos failed\n");
+    }
+
     //glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 int frames = 0;
 
-void visibilityCheck(Permanent_Storage* state)
+void visibilityCheck(Permanent_Storage *state)
 {
     Plane frustumPlanes[6];
-    getFrustumPlanes(state->main_cam.perspectiveMatrix,frustumPlanes);
+    getFrustumPlanes(&state->main_cam.perspectiveMatrix,frustumPlanes);
     for(int i = 0; i < 6; i++)
     {
-        Vec4 thing = Vec4(frustumPlanes[i].a,frustumPlanes[i].b,frustumPlanes[i].c,0.0f);
-        frustumPlanes[i] = Plane(state->main_cam.invViewMat()*thing);
+        Vec4 thing = vec4(frustumPlanes[i].a,frustumPlanes[i].b,frustumPlanes[i].c,0.0f);
+        Mat4 mat = cameraCalculateInverseViewMatrix(&state->main_cam);
+        Vec4 res;
+        mat4Vec4Mul(&res, &mat, &thing);
+        frustumPlanes[i] = planeFromVec4(&res);
     }
 
     Vec3 n[6];
@@ -420,16 +501,18 @@ void visibilityCheck(Permanent_Storage* state)
 
     for(int planeId = 0; planeId < 6; planeId++)
     {
-        n[planeId] = Vec3(frustumPlanes[planeId].a,frustumPlanes[planeId].b,frustumPlanes[planeId].c).normalized();
+        Vec3 idk = vec3(frustumPlanes[planeId].a,frustumPlanes[planeId].b,frustumPlanes[planeId].c);
+        n[planeId] =  vec3Normalized(&idk);
         d[planeId] = frustumPlanes[planeId].d;
     }
 
     for(int i = 0; i < state->numEntities; i++)
     {
         // TODO: check for all 6 planes?
-        Vec3 pos = state->entities[i]->transform.position-state->main_cam.position;
-        r32 res = pos.dot(n[0])+d[0]+state->entities[i]->mesh.boundingRadius;
-        r32 res2 = pos.dot(n[1])+d[1]+state->entities[i]->mesh.boundingRadius;
+        Vec3 pos;
+        vec3Sub(&pos, &state->entities[i]->transform.position, &state->main_cam.position);
+        r32 res = vec3Dot(&pos, &n[0]) + d[0]+state->entities[i]->mesh.boundingRadius;
+        r32 res2 = vec3Dot(&pos, &n[1]) + d[1]+state->entities[i]->mesh.boundingRadius;
         if(res <= 0.f || res2 <= 0.f)
             state->entities[i]->visible = false;
         else
@@ -437,30 +520,8 @@ void visibilityCheck(Permanent_Storage* state)
     }
 }
 
-void deferredRender(Permanent_Storage* state, Input* input, float dt)
+void deferredRender(Permanent_Storage *state, Input *input, float dt)
 {
-
-/*
-    //printf("Plane1: %f %f %f %f\n",frustumPlanes[0].a,frustumPlanes[0].b,frustumPlanes[0].c,frustumPlanes[0].d);
-    drawLine(state->main_cam.position+state->main_cam.forwardDir()*5.f,
-             state->main_cam.position+state->main_cam.forwardDir()*5.f
-                +Vec3(frustumPlanes[1].a,frustumPlanes[1].b,frustumPlanes[1].c).normalized());
-    drawLine(state->main_cam.position+state->main_cam.forwardDir()*5.f,
-             state->main_cam.position+state->main_cam.forwardDir()*5.f
-                +Vec3(frustumPlanes[3].a,frustumPlanes[3].b,frustumPlanes[3].c).normalized());
-    drawLine(state->main_cam.position+state->main_cam.forwardDir()*5.f,
-             state->main_cam.position+state->main_cam.forwardDir()*5.f
-                +Vec3(frustumPlanes[5].a,frustumPlanes[5].b,frustumPlanes[5].c).normalized());
-
-    Mesh* tmesh = &testBarrel.mesh;
-
-    Vec4* vertices = (Vec4*)tmesh->cold->data;
-    Vec3* normals = (Vec3*)((vertices+tmesh->cold->vertices));
-    for(int i = 0; i < tmesh->cold->vertices;i++)
-    {
-        //drawLine(Vec3(vertices[i]),Vec3(vertices[i])+normals[i]*0.1f);
-    }*/
-
     Mat4 modelMatrix;
     Mat4 posToShadowSpace;
 
@@ -474,24 +535,29 @@ void deferredRender(Permanent_Storage* state, Input* input, float dt)
     glClearDepth(1.0f);
     glClear(GL_DEPTH_BUFFER_BIT);
 
-    Mat4 lightTransformMatrix = Quaternion(-state->game.sunRot2Quat.w,state->game.sunRot2Quat.x,state->game.sunRot2Quat.y,state->game.sunRot2Quat.z).toMat4();
+    Quaternion q = quaternion(-state->game.sunRot2Quat.w,state->game.sunRot2Quat.x,state->game.sunRot2Quat.y,state->game.sunRot2Quat.z);
+    Mat4 lightTransformMatrix;
+    mat4FromQuaternion(&lightTransformMatrix, &q);
 
     Mat4 specialPerspective = projMatrix(state->main_cam.FOV, state->main_cam.aspectRatio, state->main_cam.nearPlane, 20.f);
-    Mat4 camInvPerspective = state->main_cam.invViewMat()*invPerspective(specialPerspective);
+    Mat4 mat = cameraCalculateInverseViewMatrix(&state->main_cam);
+    Mat4 mat2 = invPerspective(&specialPerspective);
+    Mat4 camInvPerspective;
+    mat4Mul(&camInvPerspective, &mat, &mat2);
 
     Vec3 frust[8];
     //left
         // down
-    frust[0]= Vec3(-1.f,-1.f,-1.f);
-    frust[1]= Vec3(-1.f,-1.f,1.f);
+    frust[0]=  vec3(-1.f,-1.f,-1.f);
+    frust[1]=  vec3(-1.f,-1.f,1.f);
         // up
-    frust[2]= Vec3(-1.f,1.f,-1.f);
-    frust[3]= Vec3(-1.f,1.f,1.f);
+    frust[2]= vec3(-1.f,1.f,-1.f);
+    frust[3]= vec3(-1.f,1.f,1.f);
     //right
-    frust[4]= Vec3(1.f,-1.f,-1.f);
-    frust[5]= Vec3(1.f,-1.f,1.f);
-    frust[6]= Vec3(1.f,1.f,-1.f);
-    frust[7]= Vec3(1.f,1.f,1.f);
+    frust[4]= vec3(1.f,-1.f,-1.f);
+    frust[5]= vec3(1.f,-1.f,1.f);
+    frust[6]= vec3(1.f,1.f,-1.f);
+    frust[7]= vec3(1.f,1.f,1.f);
 
     r32 minX = 99999999.f;
     r32 minY = 99999999.f;
@@ -502,8 +568,11 @@ void deferredRender(Permanent_Storage* state, Input* input, float dt)
 
     for(int i = 0; i < 8; i++)
     {
-        Vec4 sdf = camInvPerspective*Vec4(frust[i],1.0f);
-        frust[i] = Vec3(sdf/sdf.w);
+        Vec4 row = vec4FromVec3AndW(frust[i],1.0f);
+        Vec4 sdf;
+        mat4Vec4Mul(&sdf, &camInvPerspective, &row);
+        vec4Scale(&sdf, &sdf, sdf.w);
+        frust[i] = vec3FromVec4(sdf);
         minX = min(minX, frust[i].x);
         minY = min(minY, frust[i].y);
         minZ = min(minZ, frust[i].z);
@@ -512,7 +581,7 @@ void deferredRender(Permanent_Storage* state, Input* input, float dt)
         maxZ = max(maxZ, frust[i].z);
     }
 
-    drawLine(frust[1]*0.99f,frust[2]*0.99f);
+    //drawLine(frust[1]*0.99f,frust[2]*0.99f);
 
     /*static Vec3 thing[8];
 
@@ -547,14 +616,17 @@ void deferredRender(Permanent_Storage* state, Input* input, float dt)
 
     Mat4 orthoMat = ortho(minX, maxX, minY, maxY, minZ, maxZ);
 
-    posToShadowSpace = orthoMat*lightTransformMatrix*state->main_cam.invViewMat();
+    Mat4 civm = cameraCalculateInverseViewMatrix(&state->main_cam);
+    mat4Mul(&posToShadowSpace, &orthoMat, &lightTransformMatrix);
+    mat4Mul(&posToShadowSpace, &posToShadowSpace, &civm);
 
     glUseProgram(state->shadowPassShader.program);
     for(int i = 0; i < state->numEntities; i++)
     {
         if(state->entities[i]->visible)
         {
-            modelMatrix = lightTransformMatrix*(*calculateModelMatrix(&state->entities[i]->transform));
+            modelMatrix = *calculateModelMatrix(&state->entities[i]->transform);
+            mat4Mul(&modelMatrix, &lightTransformMatrix, &modelMatrix);
             glUniformMatrix4fv(state->shadowPassShader.surface.perspectiveMatrixUnif, 1, GL_FALSE, (const GLfloat*)&orthoMat);
             glUniformMatrix4fv(state->shadowPassShader.surface.transformMatrixUnif, 1, GL_FALSE, (const GLfloat*)&modelMatrix);
             renderMesh(&state->entities[i]->mesh);
@@ -585,15 +657,20 @@ void deferredRender(Permanent_Storage* state, Input* input, float dt)
                 glUseProgram(state->entities[i]->material.shader->program);
                 if(state->entities[i]->material.shader->type == ST_Surface)
                 {
-                    Vec4 tempLightDir = state->main_cam.transformMatrix*Vec4(0.866f, 0.5f,0.0f,0.0f);
+                    Vec4 ldir = vec4(0.866f, 0.5f,0.0f,0.0f);
+                    Vec4 tempLightDir;
+                    mat4Vec4Mul(&tempLightDir, &state->main_cam.transformMatrix, &ldir);
                     glUniform4fv(state->game.texShader.surface.lightDirUnif, 1, (const GLfloat*)&tempLightDir);
                 }
                 else if(state->entities[i]->material.shader->type == ST_Skydome)
                 {
-                    modelMatrix = state->main_cam.transformMatrix*(*calculateModelMatrix(&state->entities[i]->transform));
+                    modelMatrix = *calculateModelMatrix(&state->entities[i]->transform);
+                    mat4Mul(&modelMatrix, &state->main_cam.transformMatrix, &modelMatrix);
                 }
             }
-            modelMatrix = state->main_cam.transformMatrix*(*calculateModelMatrix(&state->entities[i]->transform));
+            modelMatrix = *calculateModelMatrix(&state->entities[i]->transform);
+            mat4Mul(&modelMatrix, &state->main_cam.transformMatrix, &modelMatrix);
+
             glUniformMatrix4fv(state->game.texShader.surface.transformMatrixUnif, 1, GL_FALSE, (const GLfloat*) &modelMatrix);
 
             glUniform1i(state->entities[i]->material.shader->surface.diffuseTexture, 0);
@@ -655,7 +732,8 @@ void deferredRender(Permanent_Storage* state, Input* input, float dt)
     glEnableVertexAttribArray(0); // TODO
 
     // TODO
-    Vec4 transformedSunDir = state->main_cam.transformMatrix*state->game.sunDir;
+    Vec4 transformedSunDir;
+    mat4Vec4Mul(&transformedSunDir, &state->main_cam.transformMatrix, &state->game.sunDir);
     glUniform4fv(state->postProcShader.postproc.light_unif, 1, (const GLfloat*)&transformedSunDir);
     glUniformMatrix4fv(state->postProcShader.postproc.lightProjM_unif, 1, GL_FALSE, (const GLfloat*)&posToShadowSpace);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -693,16 +771,18 @@ void deferredRender(Permanent_Storage* state, Input* input, float dt)
     float innerR2 = innerR*innerR;
     float mieMult = 0.005f;
     float rayMult = 0.003f;
-    setPosition(&state->game.dome.transform,Vec3(state->main_cam.position.x,-innerR/100.f+state->main_cam.position.y,state->main_cam.position.z));
+    setPosition(&state->game.dome.transform, vec3(state->main_cam.position.x,-innerR/100.f+state->main_cam.position.y,state->main_cam.position.z));
     float cheight = innerR+100.0f;
     updateScaleMatrix(&state->game.dome.transform);
     glUseProgram(state->game.skyShader.program);
-    modelMatrix = state->main_cam.transformMatrix*(*calculateModelMatrix(&state->game.dome.transform));
-    Mat4 domeScale = scale(Vec3(20000.f,20000.f,20000.f));
+
+    modelMatrix = *calculateModelMatrix(&state->game.dome.transform);
+    mat4Mul(&modelMatrix, &state->main_cam.transformMatrix, &modelMatrix);
+    Mat4 domeScale = scale( vec3(20000.f,20000.f,20000.f));
     glUniformMatrix4fv( state->game.skyShader.skydome.scaleMatrix, 1, GL_FALSE, (const GLfloat*)&domeScale);
     glUniformMatrix4fv( state->game.skyShader.skydome.perspectiveMatrix, 1, GL_FALSE, (const GLfloat*) &state->main_cam.perspectiveMatrix);
     glUniformMatrix4fv( state->game.skyShader.skydome.transformMatrix,1,GL_FALSE, (const GLfloat*) &modelMatrix);
-    Vec3 camPos(0.0f,innerR,0.0f);
+    Vec3 camPos = vec3(0.0f,innerR,0.0f);
     glUniform3fv(       state->game.skyShader.skydome.v3CameraPos          ,1,(const GLfloat*)&camPos);
     glUniform3fv(       state->game.skyShader.skydome.v3LightDir     		,1,(const GLfloat*)&state->game.sunDir);
     glUniform3f(        state->game.skyShader.skydome.v3InvWavelength, 1.0 / pow(0.650, 4.0), 1.0 / pow(0.570, 4.0), 1.0 / pow(0.475, 4.0));
@@ -726,9 +806,9 @@ void deferredRender(Permanent_Storage* state, Input* input, float dt)
     glUseProgram(0);
 }
 
-void forwardRender(Permanent_Storage* state, Input* input, float dt)
+void forwardRender(Permanent_Storage *state, Input *input, float dt)
 {
-    setPosition(&state->game.testBarrel.transform,state->game.testBarrel.transform.position+Vec3(0.01f,0.0f,0.01f));
+    //setPosition(&state->game.testBarrel.transform,state->game.testBarrel.transform.position+ vec3(0.01f,0.0f,0.01f));
 
     glDisable(GL_BLEND);
     //glBlendFunc(GL_ONE, GL_ONE);
@@ -747,7 +827,8 @@ void forwardRender(Permanent_Storage* state, Input* input, float dt)
     {
         if(state->entities[i]->visible)
         {
-            modelMatrix = state->main_cam.transformMatrix*(*calculateModelMatrix(&state->entities[i]->transform));
+            modelMatrix = *calculateModelMatrix(&state->entities[i]->transform);
+            mat4Mul(&modelMatrix, &state->main_cam.transformMatrix, &modelMatrix);
             glUniformMatrix4fv(state->shadowPassShader.surface.transformMatrixUnif, 1, GL_FALSE, (const GLfloat*) &modelMatrix);
             renderMesh(&state->entities[i]->mesh);
         }
@@ -802,7 +883,8 @@ void forwardRender(Permanent_Storage* state, Input* input, float dt)
                     glUniformMatrix4fv(state->entities[i]->material.shader->surface.viewMatixUnif, 1, GL_FALSE, (const GLfloat*) &state->main_cam.transformMatrix);
                 }
             }
-            modelMatrix = state->main_cam.transformMatrix*(*calculateModelMatrix(&state->entities[i]->transform));
+            modelMatrix = *calculateModelMatrix(&state->entities[i]->transform);
+            mat4Mul(&modelMatrix, &state->main_cam.transformMatrix, &modelMatrix);
             glUniformMatrix4fv(state->entities[i]->material.shader->surface.transformMatrixUnif, 1, GL_FALSE, (const GLfloat*) &modelMatrix);
 
             glUniform1i(state->entities[i]->material.shader->surface.diffuseTexture, 0);
@@ -820,49 +902,63 @@ void forwardRender(Permanent_Storage* state, Input* input, float dt)
     //glBindBuffe
 }
 
-void display(MemStack* gamemem, Input* input, float dt)
+void display(EngineMemory *mem, Input *input, float dt)
 {
-    Permanent_Storage* state = (Permanent_Storage*)gamemem->start;
+    Permanent_Storage *state = (Permanent_Storage*)mem->gameState;
 
     float camSpeed = 10.f;
+    Vec3 forward = cameraCalculateForwardDirection(&state->main_cam);
+    Vec3 right = cameraCalculateRightDirection(&state->main_cam);
+
+    r32 rspeed = dt*camSpeed;
 
     if(getKey(input, KEYCODE_W))
     {
-        state->main_cam.position += state->main_cam.forwardDir()*dt*camSpeed;
+        Vec3 scaledForw;
+        vec3Scale(&scaledForw, &forward, rspeed);
+        vec3Add(&state->main_cam.position,&state->main_cam.position,&scaledForw);
+        //state->main_cam.position += forward*dt*camSpeed;
     }
     if(getKey(input, KEYCODE_S))
     {
-        state->main_cam.position -= state->main_cam.forwardDir()*dt*camSpeed;
+        Vec3 scaledForw;
+        vec3Scale(&scaledForw, &forward, rspeed);
+        vec3Sub(&state->main_cam.position,&state->main_cam.position,&scaledForw);
     }
     if(getKey(input, KEYCODE_A))
     {
-        state->main_cam.position -= state->main_cam.rightDir()*dt*camSpeed;
+        Vec3 scaledRight;
+        vec3Scale(&scaledRight, &right, rspeed);
+        vec3Sub(&state->main_cam.position,&state->main_cam.position,&scaledRight);
     }
     if(getKey(input, KEYCODE_D))
     {
-        state->main_cam.position += state->main_cam.rightDir()*dt*camSpeed;
+        Vec3 scaledRight;
+        vec3Scale(&scaledRight, &right, rspeed);
+        vec3Add(&state->main_cam.position,&state->main_cam.position,&scaledRight);
     }
 
-    Quaternion movX(Vec3(0.f,1.f,0.f),((float)-input->mousePosition.x)*PI/180.f);
-    Quaternion movY(Vec3(1.f,0.f,0.f),((float)-input->mousePosition.y)*PI/180.f);
-    state->main_cam.rotation = Quaternion(1.f,0.f,0.f,0.f)*movX*movY;
+    Quaternion movX = quaternionFromAxisAngle(vec3(0.f,1.f,0.f),((float)-input->mousePosition.x)*PI/180.f);
+    Quaternion movY = quaternionFromAxisAngle( vec3(1.f,0.f,0.f),((float)-input->mousePosition.y)*PI/180.f);
+    quaternionMul(&state->main_cam.rotation, &movX, &movY);
 
-    updateCameraMatrices(&state->main_cam);
+    cameraRecalculateMatrices(&state->main_cam);
 
-    Quaternion sr(Vec3(1.0f,0.0f,0.0f),0.785f);
-    Quaternion sr2(Vec3(1.0f,0.0f,0.0f),3.14+0.785f);
+    Quaternion sr = quaternionFromAxisAngle( vec3(1.0f,0.0f,0.0f),0.785f);
+    Quaternion sr2 = quaternionFromAxisAngle( vec3(1.0f,0.0f,0.0f),3.14+0.785f);
 
-    Vec4 sunDir(0.0,0.0,-1.0,0.0);
-    Mat4 sunRot = sr.toMat4();
-    state->game.sunRot2 = sr2.toMat4();
+    Vec4 sunDir= vec4(0.0,0.0,-1.0,0.0);
+    Mat4 sunRot;
+    mat4FromQuaternion(&sunRot, &sr);
+    mat4FromQuaternion(&state->game.sunRot2, &sr2);
     state->game.sunRot2Quat = sr2;
-    sunDir = sunRot*sunDir;
+    mat4Vec4Mul(&sunDir, &sunRot, &sunDir);
 
-    state->game.wall.transform.rotation = Quaternion(Vec3(0.f,1.f,0.f),((float)frames/100.0f));
-    state->game.wall2.transform.rotation = Quaternion(Vec3(0.f,1.f,0.f),((float)frames/100.0f));
+    state->game.wall.transform.rotation = quaternionFromAxisAngle( vec3(0.f,1.f,0.f),((float)frames/100.0f));
+    state->game.wall2.transform.rotation = quaternionFromAxisAngle( vec3(0.f,1.f,0.f),((float)frames/100.0f));
     state->game.wall.transform.dirty = true;
     state->game.wall2.transform.dirty = true;
-    setListenerTransform(state->main_cam.position, state->main_cam.forwardDir(), state->main_cam.upDir());
+    setListenerTransform(state->main_cam.position, cameraCalculateForwardDirection(&state->main_cam), cameraCalculateUpDirection(&state->main_cam));
 
     state->game.sunDir = sunDir;
 
@@ -899,6 +995,10 @@ void display(MemStack* gamemem, Input* input, float dt)
     else
     {
         forwardRender(state, input, dt);
+        glUseProgram(state->game.particleShader.program);
+        glUniformMatrix4fv(state->game.particleShader.surface.perspectiveMatrixUnif, 1, GL_FALSE, (const GLfloat*)&state->main_cam.perspectiveMatrix);
+        glUniformMatrix4fv(state->game.particleShader.surface.transformMatrixUnif, 1, GL_FALSE, (const GLfloat*)&state->main_cam.transformMatrix);
+        renderAndUpdateParticleSystem(&state->game.particles,dt);
     }
 
     /*glEnable(GL_BLEND);
@@ -923,12 +1023,13 @@ void display(MemStack* gamemem, Input* input, float dt)
         printf("OpenGL error: %d (0x%08x)\n",err,err);
     }*/
 
+
     frames++;
 }
 
-void reshape (MemStack* game_memory, int w, int h)
+void reshape (EngineMemory *mem, int w, int h)
 {
-    Permanent_Storage* state = (Permanent_Storage*)game_memory->start;
+    Permanent_Storage *state = (Permanent_Storage*)mem->gameState;
 
     deleteFrameBuffer(state);
     genFrameBuffer(state, w, h);
@@ -939,7 +1040,7 @@ void reshape (MemStack* game_memory, int w, int h)
     state->windowHeight = h;
 
     state->main_cam.aspectRatio = (r32)w/(r32)h;
-    updateCameraMatrices(&state->main_cam);
+    cameraRecalculateMatrices(&state->main_cam);
 
     for(u32 i = 0; i < state->numShaders; i++)
     {
@@ -953,7 +1054,7 @@ void reshape (MemStack* game_memory, int w, int h)
     glViewport(0, 0, (GLsizei) w, (GLsizei) h);
 }
 
-void gameExit(MemStack* game_memory)
+void gameExit(MemStack *game_memory)
 {
     audioExit();
 }
