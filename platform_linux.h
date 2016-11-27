@@ -15,17 +15,17 @@
 //#include "core.hpp"
 #include "engine_platform.h"
 
-struct PlatformState
+typedef struct PlatformState
 {
-    Display* display;
+    Display *display;
     Window win;
-};
+} PlatformState;
 
-struct LinuxFileHandle
+typedef struct LinuxFileHandle
 {
     int fileHandle;
-};
+} LinuxFileHandle;
 
-Window Linux_CreateWindow(Display* display, int width, int height, const char* windowTitle);
+Window Linux_CreateWindow(Display *display, int width, int height, const char* windowTitle);
 
 #endif // PLATFORM_LINUX_H

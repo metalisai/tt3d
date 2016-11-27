@@ -5,11 +5,11 @@
 
 //#define internal static
 
-struct PlatformFileHandle
+typedef struct PlatformFileHandle
 {
     b32 noErrors;
     void* PlatformData;
-};
+} PlatformFileHandle;
 
 #define PLATFORM_OPEN_FILE(name) PlatformFileHandle name(const char *fileName)
 typedef PLATFORM_OPEN_FILE(platformOpenFile);
@@ -23,21 +23,21 @@ typedef PLATFORM_READ_DATA_FROM_FILE(platformReadFromFile);
 #define PLATFORM_CLOSE_FILE(name) void name(PlatformFileHandle *handle)
 typedef PLATFORM_CLOSE_FILE(platformCloseFile);
 
-struct PlatformApi
+typedef struct PlatformApi
 {
     platformOpenFile *openFile;
     platformGetFileSize *getFileSize;
     platformReadFromFile *readFromFile;
     platformCloseFile *closeFile;
-};
+} PlatformApi;
 extern PlatformApi Platform;
 
-struct EngineMemory
+typedef struct EngineMemory
 {
     struct GameState *gameState;
     struct TransientState *transientState;
 
     PlatformApi platformApi;
-};
+} EngineMemory;
 
 #endif // ENGINE_PLATFORM_H

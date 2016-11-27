@@ -51,7 +51,7 @@ Mesh* generateTerrainMesh()
     for(int i = 0; i < width*height;i++)
         normals[i] = vec3(1.0f,0.0f,0.0f);
 
-    Mesh* mesh = new Mesh;
+    Mesh* mesh = malloc(sizeof(Mesh));
     meshInit(mesh);
     mesh->cold->vertices = width*height;
     mesh->cold->normals = width*height;

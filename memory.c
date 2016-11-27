@@ -3,7 +3,7 @@
 void* stackPushSize(MemStack* stack, u64 size)
 {
     void* end = (char*)stack->start + stack->size;
-    if(stack->pointer + size <= end)
+    if((stack->pointer + size) <= (char*)end)
     {
         char* ret = stack->pointer;
         stack->pointer += size;

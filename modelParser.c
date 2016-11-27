@@ -6,7 +6,7 @@
 
 // ignores until delimiter
 // returns false if end of file was reached
-bool ignore(FILE* file, char delim)
+b32 ignore(FILE* file, char delim)
 {
     char ch = fgetc(file);
     while(ch != delim && ch != EOF)
@@ -52,7 +52,7 @@ char readc(FILE* file)
     return c1;
 }
 
-void getModelStats(char const* fileName, int& verts, int& faces/*, int& normals*/)
+void getModelStats(char const* fileName, int* verts, int* faces/*, int& normals*/)
 {
     FILE* file = fopen(fileName, "r");
     if(file == NULL)
@@ -61,8 +61,8 @@ void getModelStats(char const* fileName, int& verts, int& faces/*, int& normals*
         return;
     }
 
-    verts= 0;
-    faces= 0;
+    *verts= 0;
+    *faces= 0;
     int texcoords = 0;
 
     char ch;
@@ -79,7 +79,7 @@ void getModelStats(char const* fileName, int& verts, int& faces/*, int& normals*
                 if(ch == ' ')
                 {
                     ignore(file,'\n');
-                    verts++;
+                    *verts++;
                 }
                 else if(ch == 'n')
                 {
@@ -106,7 +106,7 @@ void getModelStats(char const* fileName, int& verts, int& faces/*, int& normals*
                         ch = readc(file);
                     }
                     assert(floatIndex == 3 || floatIndex == 4);
-                    faces+=floatIndex-2;
+                    *faces+=floatIndex-2;
                     ch = fgetc(file);
                 }
                 break;
@@ -135,7 +135,7 @@ Mesh* loadObjMesh(const char* fileName)
     int faces = 0;
     int normals = 0;
 
-    getModelStats(fileName,verts,faces/*,normals*/);
+    getModelStats(fileName,&verts,&faces/*,normals*/);
     printf("%d", verts);
     normals = verts;
 
@@ -365,7 +365,7 @@ Mesh* loadObjMesh(const char* fileName)
     printf("Model loaded verts: %d faces %d normals %d\n",verts,faces, normals);
     fclose(file);
 
-    Mesh* ret = new Mesh;
+    Mesh* ret = malloc(sizeof(Mesh));
     meshInit(ret);
     ret->cold->vertices = verts;
     ret->faces = faces;
@@ -397,7 +397,7 @@ Mesh* loadMesh(const char* fileName)
     void* data = malloc(byteCount);
     fread(data, 1, byteCount, file);
 
-    Mesh* mesh = new Mesh();
+    Mesh* mesh = malloc(sizeof(Mesh()));
     meshInit(mesh);
     mesh->cold->data = data;
     mesh->cold->vertices = verts;

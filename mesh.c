@@ -1,17 +1,16 @@
 #include "renderer.h"
 
 #include <assert.h>
-#include <string>
-#include <cstring>
+#include <string.h>
 #include <stdio.h>
-#include <cmath>
+#include <math.h>
 
 void meshInit(Mesh* mesh)
 {
     mesh->VAO = -1;
     mesh->AttribBuffer = -1;
     mesh->ElementBuffer = -1;
-    mesh->cold = new MeshCold(); // TODO: this never gets deleted?
+    mesh->cold = malloc(sizeof(MeshCold())); // TODO: this never gets deleted?
     mesh->cold->loadedToGPU = false;
     mesh->cold->data = NULL;
 }
@@ -133,7 +132,7 @@ void meshRecalculateNormals(Mesh* mesh)
         tangP[facesP[i*3+1]] = tangent;
         tangP[facesP[i*3+2]] = tangent;
 
-        if(std::isnan(normal.x) || std::isnan(normal.y) || std::isnan(normal.z))
+        if(isnan(normal.x) || isnan(normal.y) || isnan(normal.z))
         {
             //printf("Nan while calculating normals (%d %f,%f,%f)(%d %f,%f,%f)(%d %f,%f,%f)",facesP[i*3+0],a.x,a.y,a.z,facesP[i*3+1],b.x,b.y,b.z,facesP[i*3+2],c.x,c.y,c.z);
             normal.x = 1.0f;
@@ -156,7 +155,7 @@ void meshRecalculateNormals(Mesh* mesh)
             normalsP[i].y = normed.y;
             normalsP[i].z = normed.z;
 
-            if(std::isnan(normed.x) || std::isnan(normed.y) || std::isnan(normed.z))
+            if(isnan(normed.x) || isnan(normed.y) || isnan(normed.z))
             {
                 //printf("Nan while calculating normals2\n");
             }
@@ -201,7 +200,7 @@ Mesh* generatePlane()
     triangles[4] = 2;
     triangles[5] = 3;
 
-    Mesh* mesh = new Mesh;
+    Mesh* mesh = malloc(sizeof(Mesh));
     meshInit(mesh);
     mesh->cold->vertices = 4;
     mesh->cold->normals = 4;

@@ -6,7 +6,7 @@
 TexturePool* createTexturePool(i32 maxTextures, MemStack* stack)
 {
     // TODO: use some stack allocator
-    TexturePool* ret = new TexturePool;
+    TexturePool* ret = (TexturePool*)malloc(sizeof(TexturePool));
     ret->beginAddr = (LoadedTexture*)stackPushSize(stack,sizeof(LoadedTexture)*maxTextures);
     for(int i = 0; i < maxTextures; i++)
     {

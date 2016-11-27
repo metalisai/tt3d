@@ -18,7 +18,7 @@ Mesh *domeMesh, *mesh, *terrainMesh;
 
 #define SHADOWMAP_RES   2048
 
-inline void addEntity(Permanent_Storage *state, Entity *ent)
+void addEntity(Permanent_Storage *state, Entity *ent)
 {
     state->entities[state->numEntities] = ent;
     ++state->numEntities;
@@ -85,12 +85,6 @@ void genZPassBuffer(Permanent_Storage *gstate, int width, int height)
 
 #define FPLUS_TILESIZE 16
 #define NUM_LIGHTS 1024
-
-struct PointLight {
-    Vec4 color;
-    Vec4 position;
-    Vec4 paddingAndRadius;
-};
 
 void genForwardPlusBuffers(Permanent_Storage *state, int width, int height)
 {
@@ -212,10 +206,10 @@ void initLights(Permanent_Storage *state)
     PointLight *pointLights = (PointLight*)glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_WRITE);
 
     for (int i = 0; i < NUM_LIGHTS; i++) {
-        PointLight &light = pointLights[i];
-        light.position = vec4((random()%10000)/100.f,0.5f,(random()%10000)/100.f, 1.0f);
-        light.color = vec4(1.0f -(random()%1000)/1000.f, 1.0f - (random()%1000)/1000.f, 1.0f - (random()%1000)/1000.f, 1.0f);
-        light.paddingAndRadius = vec4FromVec3AndW(vec3(0.0f,0.0f,0.0f), 5.f); // TODO: add light radius
+        PointLight *light = &pointLights[i];
+        light->position = vec4((random()%10000)/100.f,0.5f,(random()%10000)/100.f, 1.0f);
+        light->color = vec4(1.0f -(random()%1000)/1000.f, 1.0f - (random()%1000)/1000.f, 1.0f - (random()%1000)/1000.f, 1.0f);
+        light->paddingAndRadius = vec4FromVec3AndW(vec3(0.0f,0.0f,0.0f), 5.f); // TODO: add light radius
     }
     glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
@@ -298,6 +292,7 @@ void init(EngineMemory *mem, int width, int height)
     Platform = mem->platformApi;
     memset(mem->gameState, 0, 100LL*1024LL*1024LL);
     Permanent_Storage *state = (Permanent_Storage*)mem->gameState;
+    state->deferred = true;
 
     cameraInitialize(&(state->main_cam));
     state->main_cam.FOV = 45.f;
@@ -1054,7 +1049,7 @@ void reshape (EngineMemory *mem, int w, int h)
     glViewport(0, 0, (GLsizei) w, (GLsizei) h);
 }
 
-void gameExit(MemStack *game_memory)
+void gameExit(EngineMemory *game_memory)
 {
     audioExit();
 }

@@ -1,6 +1,10 @@
 #ifndef SHARED_H
 #define SHARED_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 #include <emmintrin.h>
 
@@ -28,9 +32,6 @@ typedef struct MemStack
     char* pointer;
     u64 size;
 } MemStack;
-
-void* stackPushSize(MemStack* stack, u64 size);
-void stackInit(MemStack* stack, void* start, u64 size);
 
 #define PI 3.14159265
 #define PI_OVER_360 0.00872664625
@@ -138,6 +139,10 @@ typedef struct Input
     u8 keyStatesLastFrame[KEY_COUNT];
     Vec2 mousePosition;
 } Input;
+
+void* stackPushSize(MemStack* stack, u64 size);
+void stackInit(MemStack* stack, void* start, u64 size);
+
 int charToKeycode(char ch);
 
 Quaternion conjugate(Quaternion q);
@@ -188,5 +193,9 @@ Vec3 vec3Normalized(Vec3* v);
 r32 vec3Mag(Vec3* v);
 
 Plane planeFromVec4(Vec4* v);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // SHARED_H

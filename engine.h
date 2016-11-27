@@ -8,12 +8,12 @@
 #include "renderer.h"
 
 
-struct Character {
+typedef struct Character {
     GLuint     TextureID;  // ID handle of the glyph texture
     IVec2 Size;       // Size of glyph
     IVec2 Bearing;    // Offset from baseline to left/top of glyph
     GLuint     Advance;    // Offset to advance to next glyph
-};
+} Character;
 
 void InitText(); // in debug.cpp
 void RenderText(char* text, GLfloat x, GLfloat y, GLfloat scale);
@@ -71,11 +71,11 @@ void setupDebug();
 void drawLine(Vec3 start, Vec3 end);
 void drawDebugLines(Shader lineShader, Camera *cam);
 
-bool ignore(FILE *file, char delim);
+b32 ignore(FILE *file, char delim);
 void skip(FILE *file, char delim);
 int readToken(FILE *file, char* buffer, int size);
 char readc(FILE *file);
-void getModelStats(char const* fileName, int& verts, int& faces/*, int& normals*/);
+void getModelStats(char const* fileName, int* verts, int* faces/*, int& normals*/);
 Mesh *loadObjMesh(const char* fileName);
 Mesh *loadMesh(const char* fileName);
 

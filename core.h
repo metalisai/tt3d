@@ -6,28 +6,28 @@
 #include "engine_platform.h"
 #include "engine.h"
 
-struct ForwardPlus
+typedef struct ForwardPlus
 {
     int workGroupsX;
     int workGroupsY;
     GLuint lightBuffer;
     GLuint visibleLightIndicesBuffer;
-};
+} ForwardPlus;
 
-struct Particle
+typedef struct Particle
 {
     Vec3 localPosition;
     r32 timer;
     r32 fade;
-};
+} Particles;
 
-struct ParticleVAOData
+typedef struct ParticleVAOData
 {
     Vec3 position;
     r32 fade;
-};
+} ParticleVAOData;
 
-struct ParticleSystem
+typedef struct ParticleSystem
 {
     LoadedTexture texture;
 
@@ -42,11 +42,11 @@ struct ParticleSystem
     GLuint GLBuffer;
     GLuint VAO;
 
-    Particle particles[1000];
+    struct Particle particles[1000];
     ParticleVAOData particleData[1000];
-};
+} ParticleSystem;
 
-struct Game_State
+typedef struct Game_State
 {
     Vec4 sunDir;
     Mat4 sunRot2;// TODO: remove
@@ -72,9 +72,9 @@ struct Game_State
     Material grassMat;
 
     ParticleSystem particles;
-};
+} Game_State;
 
-struct Permanent_Storage{
+typedef struct Permanent_Storage{
     Camera main_cam;
     TexturePool* texturePool;
     i32 windowWidth;
@@ -102,25 +102,37 @@ struct Permanent_Storage{
     Shader lightCullShader;
     Shader textShader;
 
-    bool deferred = true;
+    b32 deferred;
 
     // TODO: make a shader pool
     Shader* shaders[10];
     u32 numShaders;
 
     Game_State game;
-};
+} Permanent_Storage;
+
+typedef struct PointLight {
+    Vec4 color;
+    Vec4 position;
+    Vec4 paddingAndRadius;
+} PointLight;
 
 inline void addEntity(Permanent_Storage* state, Entity* ent);
 static inline void addSurfaceShader(Permanent_Storage* state, Shader* shader);
-extern "C"
-{
-    void init(EngineMemory* gamemem, int width, int height);
-    void display(EngineMemory* gamemem, Input* input, float dt);
-    void keyboard( unsigned char key, int mouseX, int mouseY );
-    void pMouse(int x, int y);
-    void reshape (EngineMemory* game_memory, int w, int h);
-    void gameExit(EngineMemory* game_memory);
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void init(EngineMemory* gamemem, int width, int height);
+void display(EngineMemory* gamemem, Input* input, float dt);
+void keyboard( unsigned char key, int mouseX, int mouseY );
+void pMouse(int x, int y);
+void reshape (EngineMemory* game_memory, int w, int h);
+void gameExit(EngineMemory* game_memory);
+
+#ifdef __cplusplus
 }
+#endif
 
 #endif // CORE_H

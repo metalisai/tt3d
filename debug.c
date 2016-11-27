@@ -3,14 +3,13 @@
 #include <GL/glew.h>
 #include <freetype2/ft2build.h>
 #include <freetype2/freetype.h>
-#include <map>
 
 //#include "lib/parson.h"
 
 #define MAX_DEBUG_LINES 1024
 
 // TODO: get rid of malloc
-void* lineMem = malloc(5000000);
+void* lineMem;
 int lines = 0;
 GLuint lineBuffer;
 GLuint lineVAO;
@@ -25,6 +24,8 @@ void setupDebug()
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, 0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
+
+    lineMem = malloc(5000000);
 }
 
 void drawLine(Vec3 start, Vec3 end)
@@ -56,11 +57,11 @@ void drawDebugLines(Shader lineShader, Camera* cam)
 }
 
 // TODO: remove thse globals
-std::map<GLchar, Character> Characters;
+//std::map<GLchar, Character> Characters;
 GLuint VAO, VBO;
 void InitText()
 {
-    FT_Library ft;
+    /*FT_Library ft;
     if (FT_Init_FreeType(&ft))
         printf("ERROR::FREETYPE: Could not load freetype\n");
     FT_Face face;
@@ -122,12 +123,12 @@ void InitText()
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
+    glBindVertexArray(0);*/
 }
 
-void RenderText(std::string text, GLfloat x, GLfloat y, GLfloat scale)
+void RenderText(char* text, GLfloat x, GLfloat y, GLfloat scale)
 {
-    glActiveTexture(GL_TEXTURE0);
+    /*glActiveTexture(GL_TEXTURE0);
     glBindVertexArray(VAO);
 
     // Iterate through all characters
@@ -163,5 +164,5 @@ void RenderText(std::string text, GLfloat x, GLfloat y, GLfloat scale)
         x += (ch.Advance >> 6) * scale; // Bitshift by 6 to get value in pixels (2^6 = 64)
     }
     glBindVertexArray(0);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);*/
 }

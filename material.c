@@ -17,7 +17,7 @@ GLuint createShader(GLenum eShaderType, const char* shaderData, int fsize)
         GLint infoLogLength;
         glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLogLength);
 
-        GLchar *strInfoLog = new GLchar[infoLogLength + 1];
+        GLchar *strInfoLog = (GLchar *)malloc(sizeof(GLchar[infoLogLength + 1]));
         glGetShaderInfoLog(shader, infoLogLength, NULL, strInfoLog);
 
         const char *strShaderType = NULL;
@@ -29,7 +29,7 @@ GLuint createShader(GLenum eShaderType, const char* shaderData, int fsize)
         }
 
         printf("Compile failure in %s shader:\n%s\n", strShaderType, strInfoLog);
-        delete[] strInfoLog;
+        free(strInfoLog);
     }
 
     return shader;
@@ -62,10 +62,10 @@ GLuint createProgram(GLuint* shaderList, int pcount)
         GLint infoLogLength;
         glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infoLogLength);
 
-        GLchar *strInfoLog = new GLchar[infoLogLength + 1];
+        GLchar *strInfoLog = (GLchar *)malloc(sizeof(GLchar[infoLogLength + 1]));
         glGetProgramInfoLog(program, infoLogLength, NULL, strInfoLog);
         printf("Linker failure: %s\n", strInfoLog);
-        delete[] strInfoLog;
+        free(strInfoLog);
     }
 
     for(size_t iLoop = 0; iLoop < pcount; iLoop++)
@@ -74,7 +74,7 @@ GLuint createProgram(GLuint* shaderList, int pcount)
     return program;
 }
 
-void initializeComputeProgram(Shader* shader, const char* computeFile, ShaderType type)
+void initializeComputeProgram(Shader* shader, const char* computeFile, enum ShaderType type)
 {
     GLuint shaderList[1];
     shader->type = type;
@@ -108,7 +108,7 @@ void initializeComputeProgram(Shader* shader, const char* computeFile, ShaderTyp
     }
 }
 
-void initializeProgram(Shader* shader, const char* vertFile, const char* fragFile, ShaderType type)
+void initializeProgram(Shader* shader, const char* vertFile, const char* fragFile, enum ShaderType type)
 {
     GLuint shaderList[3];
     int pcount = 2;

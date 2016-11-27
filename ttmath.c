@@ -1,6 +1,6 @@
 #include "shared.h"
 
-#include <cmath>
+#include <math.h>
 
 IVec2 ivec2(i32 x, i32 y)
 {

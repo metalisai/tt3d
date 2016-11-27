@@ -2,14 +2,16 @@
 
 #include "shared.h"
 
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 #include <dlfcn.h>
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <fcntl.h>
+#include <signal.h>
+
 
 int (*functionPtr)(int,int);
 
@@ -20,7 +22,7 @@ void (*pMouse  ) (int x, int y);
 void (*reshape ) (EngineMemory* game_memory, int w, int h);
 
 void* dlHandle = 0;
-timespec lastModified;
+struct timespec lastModified;
 const char* codeFile = "./libgame.so";
 
 static PLATFORM_OPEN_FILE(linuxOpenFile) // macro defined in engine_platform.h
@@ -153,8 +155,8 @@ int main()
     }*/
 
     XEvent event;
-    bool running = true;
-    timespec start;
+    b32 running = true;
+    struct timespec start;
     clock_gettime(CLOCK_MONOTONIC, &start);
     while(running)
     {
@@ -197,14 +199,16 @@ int main()
                 }
                 break;
             case ConfigureNotify:
-                XConfigureEvent xce = event.xconfigure;
-                // TODO: this event might not always be a resize event?
-                reshape(eMem,xce.width,xce.height);
+                {
+                    XConfigureEvent xce = event.xconfigure;
+                    // TODO: this event might not always be a resize event?
+                    reshape(eMem,xce.width,xce.height);
+                }
                 break;
             }
         }
 
-        timespec last = start;
+        struct timespec last = start;
         clock_gettime(CLOCK_MONOTONIC, &start);
         float seconds = start.tv_sec-last.tv_sec+(start.tv_nsec-last.tv_nsec)/1000000000.0;
         display(eMem, &input, seconds);
