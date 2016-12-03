@@ -1,7 +1,7 @@
 #include "engine.h"
 
-#define STB_PERLIN_IMPLEMENTATION
-#include "lib/stb_perlin.h"
+/*#define STB_PERLIN_IMPLEMENTATION
+#include "lib/stb_perlin.h"*/
 
 Mesh* generateTerrainMesh()
 {

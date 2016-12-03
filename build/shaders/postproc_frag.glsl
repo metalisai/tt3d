@@ -111,11 +111,13 @@ void main(void) {
   float thing = (lightProjectionMatrix*vec4(pos,1.0)).w;
   vec3 inShadowSpace = (lightProjectionMatrix*vec4(pos,1.0)).xyz;
 
-  float tDepth = ((inShadowSpace.z/abs(thing))-0.005)+1.0;
+  float tDepth = ((inShadowSpace.z/thing)-0.005)+1.0;
+  tDepth *= 0.5; // from 0..2 to 0..1
 
-  if(tDepth < 1.0)
+  if(tDepth < 1.0) // if its out of the shadow camera projection, we dont't make any changes
   {
-     lighting *= float(tDepth < texture2D(shadow_texture,(inShadowSpace.xy/thing)*0.5+0.5).x*2.0);
+  	  float depthFromShadowMap = texture2D(shadow_texture,((inShadowSpace.xy/thing)+1.0)*0.5).x;
+     lighting *= float(tDepth < depthFromShadowMap);
   }
   vec3 pointLightDir = normalize(lightDir.xyz);
 
@@ -147,11 +149,6 @@ void main(void) {
   vec4 diff = texture2D(fbo_texture, f_texcoord);
 
   gl_FragColor = diff*lighting*mult+diff*vec4(0.15,0.15,0.15,1.0)+vec4(specular,1.0);
-  //gl_FragColor = texture2D(shadow_texture,f_texcoord);
-  //float tesss = texture2D(shadow_texture,vec2(clamp(inShadowSpace.x/thing*0.5+0.5,0,1),clamp(inShadowSpace.y/thing*0.5+0.5,0,1))).x*2.0-1.0;
-  //float tesss = clamp(inShadowSpace.z,0,1);
-  //gl_FragColor = vec4(tesss,tesss,tesss,1.0);
-  //gl_FragColor = vec4(texture2D(depth_texture, f_texcoord).x,texture2D(depth_texture, f_texcoord).x,texture2D(depth_texture, f_texcoord).x,1.0);
   gl_FragDepth = texture2D(depth_texture, f_texcoord).x;
 
   //vec4 ssrr = SSR();

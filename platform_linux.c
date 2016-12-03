@@ -133,13 +133,13 @@ int main()
         printf("Glew Init failed!\n");
         return 0;
     }
-    if (glewIsSupported("GL_VERSION_4_3"))
+    if (glewIsSupported("GL_VERSION_4_4"))
     {
-        printf("GL 4.3 Supported \n");
+        printf("GL 4.4 Supported \n");
     }
     else
     {
-        printf("GL 4.3 NOT Supported, exiting!\n");
+        printf("GL 4.4 NOT Supported, exiting!\n");
         return -1;
     }
     init(eMem,1024,768);
@@ -243,8 +243,8 @@ Window Linux_CreateWindow(Display* display, int width, int height, const char* w
         GLX_BLUE_SIZE, 8,
         GLX_DEPTH_SIZE, 24,
         GLX_DOUBLEBUFFER, True,
-        GLX_SAMPLE_BUFFERS  , 1,
-        GLX_SAMPLES         , 4,
+        GLX_SAMPLE_BUFFERS  , 0, // 1 and 4 for 4xAA ??
+        GLX_SAMPLES         , 0,
         None};
     int nElements = 0;
     GLXFBConfig* fbconfig = glXChooseFBConfig( display, screen, attrib_list, &nElements);

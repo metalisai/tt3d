@@ -26,6 +26,8 @@ typedef double r64;
 #define true    1
 #define false   0
 
+#define ARRAY_COUNT( array ) (sizeof( array ) / (sizeof( array[0] )))
+
 typedef struct MemStack
 {
     char* start;

@@ -72,7 +72,7 @@ void setPosition(Transform* transform, Vec3 pos)
     transform->position = pos;
 }
 
-Mat4* calculateModelMatrix(Transform* transform)
+Mat4 calculateModelMatrix(Transform* transform)
 {
     if(transform->dirty)
     {
@@ -84,10 +84,10 @@ Mat4* calculateModelMatrix(Transform* transform)
         mat4Mul(&transform->modelMatrix, &res, &transform->scaleMatrix);
         //transform->modelMatrix = transform->translationMatrix*transform->rotationMatrix*transform->scaleMatrix;
         transform->dirty = false;
-        return &transform->modelMatrix;
+        return transform->modelMatrix;
     }
     else
     {
-        return &transform->modelMatrix;
+        return transform->modelMatrix;
     }
 }

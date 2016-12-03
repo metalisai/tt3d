@@ -53,17 +53,26 @@ GLuint createProgram(GLuint* shaderList, int pcount)
     for(size_t iLoop = 0; iLoop < pcount; iLoop++)
         glAttachShader(program, shaderList[iLoop]);
 
+    if(pcount == 3) // TODO: remove this hack?
+    {
+        const GLchar* feedbackVaryings[] = { "outVertPos", "theNormal", "thePos"};
+        glTransformFeedbackVaryings(program, 3, feedbackVaryings, GL_INTERLEAVED_ATTRIBS);
+    }
+
     glLinkProgram(program);
 
     GLint status;
     glGetProgramiv (program, GL_LINK_STATUS, &status);
-    if (status == GL_FALSE)
+    GLint infoLogLength;
+    glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infoLogLength);
+    if (/*status == GL_FALSE*/infoLogLength > 0)
     {
         GLint infoLogLength;
         glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infoLogLength);
 
         GLchar *strInfoLog = (GLchar *)malloc(sizeof(GLchar[infoLogLength + 1]));
         glGetProgramInfoLog(program, infoLogLength, NULL, strInfoLog);
+        glGetProgramPipelineInfoLog(program, infoLogLength, NULL, strInfoLog);
         printf("Linker failure: %s\n", strInfoLog);
         free(strInfoLog);
     }
@@ -134,6 +143,8 @@ void initializeProgram(Shader* shader, const char* vertFile, const char* fragFil
         shader->surface.diffuseTexture = glGetUniformLocation(shader->program, "tex");
         shader->surface.normalTexture = glGetUniformLocation(shader->program, "normalSampler");
         shader->surface.viewMatixUnif = glGetUniformLocation(shader->program, "viewMat");
+        shader->surface.cameraPosition = glGetUniformLocation(shader->program, "camPos");
+        shader->surface.modelMatrix = glGetUniformLocation(shader->program, "modelMatrix");
         /*if(shader->surface.lightDirUnif == 0xFFFFFFFF)
             printf("lightdir location not found  %s %s\n",vertFile,fragFile);
         if(shader->surface.perspectiveMatrixUnif == 0xFFFFFFFF)
@@ -162,12 +173,15 @@ void initializeProgram(Shader* shader, const char* vertFile, const char* fragFil
                     printf("lightProjM_unif location not found %s %s\n",vertFile,fragFile);
         break;
     case ST_Particle:
-        shader->surface.lightDirUnif = glGetUniformLocation(shader->program, "lightDir");
-        shader->surface.transformMatrixUnif = glGetUniformLocation(shader->program, "transformMatrix");
-        shader->surface.perspectiveMatrixUnif = glGetUniformLocation(shader->program, "perspectiveMatrix");
-        shader->surface.diffuseTexture = glGetUniformLocation(shader->program, "tex");
-        shader->surface.normalTexture = glGetUniformLocation(shader->program, "normalSampler");
-        shader->surface.viewMatixUnif = glGetUniformLocation(shader->program, "viewMat");
+        shader->terrainGen.lightDirUnif = glGetUniformLocation(shader->program, "lightDir");
+        shader->terrainGen.transformMatrixUnif = glGetUniformLocation(shader->program, "transformMatrix");
+        shader->terrainGen.perspectiveMatrixUnif = glGetUniformLocation(shader->program, "perspectiveMatrix");
+        shader->terrainGen.diffuseTexture = glGetUniformLocation(shader->program, "tex");
+        shader->terrainGen.mcubesTexture1 = glGetUniformLocation(shader->program, "mcubesLookup");
+        shader->terrainGen.mcubesTexture2 = glGetUniformLocation(shader->program, "mcubesLookup2");
+        //shader->surface.normalTexture = glGetUniformLocation(shader->program, "normalSampler");
+        shader->terrainGen.viewMatixUnif = glGetUniformLocation(shader->program, "viewMat");
+        shader->terrainGen.cameraPosition = glGetUniformLocation(shader->program, "camPos");
         break;
     case ST_Skydome:
         shader->skydome.scaleMatrix           = glGetUniformLocation(shader->program, "scaleMatrix"         );

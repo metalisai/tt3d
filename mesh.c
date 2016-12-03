@@ -10,7 +10,7 @@ void meshInit(Mesh* mesh)
     mesh->VAO = -1;
     mesh->AttribBuffer = -1;
     mesh->ElementBuffer = -1;
-    mesh->cold = malloc(sizeof(MeshCold())); // TODO: this never gets deleted?
+    mesh->cold = malloc(sizeof(MeshCold)); // TODO: this never gets deleted?
     mesh->cold->loadedToGPU = false;
     mesh->cold->data = NULL;
 }
@@ -21,15 +21,21 @@ void openGL_loadMesh(Mesh* mesh)
     assert(!mesh->cold->loadedToGPU);
     int vertices = mesh->cold->vertices;
     void* data = mesh->cold->data;
+
     glGenBuffers(1, &mesh->AttribBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, mesh->AttribBuffer);
-    glBufferData(GL_ARRAY_BUFFER, vertices*sizeof(Vec4)+vertices*sizeof(Vec3)+vertices*sizeof(Vec2), data, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vertices*sizeof(Vec4)+vertices*sizeof(Vec3)+vertices*sizeof(Vec2)+vertices*sizeof(Vec3), data, GL_STATIC_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, vertices*sizeof(Vec4)+vertices*sizeof(Vec3)+vertices*sizeof(Vec2),
+                    vertices*sizeof(Vec3),
+                    ((char*)data)+vertices*sizeof(Vec4)+vertices*sizeof(Vec3)+vertices*sizeof(Vec2)+mesh->faces*3*sizeof(u16));
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+
     glGenBuffers(1, &mesh->ElementBuffer);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ElementBuffer);
-    int byteOffset = vertices*sizeof(Vec4)+vertices*sizeof(Vec3)+vertices*sizeof(Vec2);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->faces*3*2, ((char*)data)+byteOffset, GL_STATIC_DRAW);
+    u32 byteOffset = vertices*sizeof(Vec4)+vertices*sizeof(Vec3)+vertices*sizeof(Vec2);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->faces*3*sizeof(u16), ((char*)data)+byteOffset, GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
     glGenVertexArrays(1, &mesh->VAO);
     glBindVertexArray(mesh->VAO);
     glBindBuffer(GL_ARRAY_BUFFER, mesh->AttribBuffer);
@@ -40,13 +46,15 @@ void openGL_loadMesh(Mesh* mesh)
     // positions
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, 0);
     // normals
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)(4*(u64)vertices*4));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)(vertices*sizeof(Vec4)));
     // texcoord
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)((u64)vertices*sizeof(Vec4)+vertices*sizeof(Vec3)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)(vertices*sizeof(Vec4)+vertices*sizeof(Vec3)));
     // tangents
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, (void*)((u64)vertices*sizeof(Vec4)+vertices*sizeof(Vec3)+vertices*sizeof(Vec2)+mesh->faces*3*sizeof(u16)));
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, (void*)(vertices*sizeof(Vec4)+vertices*sizeof(Vec3)+vertices*sizeof(Vec2)));
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ElementBuffer);
     glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     mesh->cold->loadedToGPU = true;
 }
 
@@ -58,6 +66,11 @@ void renderMesh(Mesh* mesh)
     glEnableVertexAttribArray(2); // tex
     glEnableVertexAttribArray(3); // tangent
     glDrawElements(GL_TRIANGLES, mesh->faces*3, GL_UNSIGNED_SHORT, 0);
+    glDisableVertexAttribArray(0); // pos
+    glDisableVertexAttribArray(1); // normal
+    glDisableVertexAttribArray(2); // tex
+    glDisableVertexAttribArray(3); // tangent
+    glBindVertexArray(0);
 }
 
 void meshRecalculateBounds(Mesh* mesh)
@@ -85,8 +98,10 @@ void meshRecalculateNormals(Mesh* mesh)
     u16* facesP = (u16*)(texP+verts);
     Vec3* tangP = (Vec3*)(facesP+faces*3);
     memset(normalsP,0,sizeof(Vec3)*verts);
+    //printf("verts %d\n",verts);
     for(int i = 0; i < faces; i++)
     {
+        //printf("index: %d ",facesP[i*3]);
         Vec3 a = vec3(vertsP[facesP[i*3+0]].x,vertsP[facesP[i*3+0]].y,vertsP[facesP[i*3+0]].z);
         Vec3 b = vec3(vertsP[facesP[i*3+1]].x,vertsP[facesP[i*3+1]].y,vertsP[facesP[i*3+1]].z);
         Vec3 c = vec3(vertsP[facesP[i*3+2]].x,vertsP[facesP[i*3+2]].y,vertsP[facesP[i*3+2]].z);
@@ -143,6 +158,7 @@ void meshRecalculateNormals(Mesh* mesh)
         }
         //printf("norm %f %f %f\n",normal.x,normal.y,normal.z);
     }
+    //printf("\n");
 
    for(int i = 0; i < verts; i++)
     {
@@ -173,7 +189,8 @@ Mesh* generatePlane()
     int normalSize = 4*sizeof(Vec3);
     int texSize = 4*sizeof(Vec2);
     int indexSize = (6 * sizeof(u16));
-    const void* data = malloc(vertexSize+normalSize+indexSize+texSize);
+    int tangentSize = 4*sizeof(Vec3);
+    const void* data = malloc(vertexSize+normalSize+indexSize+texSize+tangentSize);
 
     Vec4* vertices = (Vec4*)data;
 

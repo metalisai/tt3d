@@ -8,8 +8,8 @@
 
 typedef struct ForwardPlus
 {
-    int workGroupsX;
-    int workGroupsY;
+    u32 workGroupsX;
+    u32 workGroupsY;
     GLuint lightBuffer;
     GLuint visibleLightIndicesBuffer;
 } ForwardPlus;
@@ -60,11 +60,14 @@ typedef struct Game_State
     Shader lineShader;
     Shader particleShader;
 
+    Shader straightShader;
+
     Entity barrel[3600];
     Entity terrain;
     Entity testBarrel;
     Entity wall;
     Entity wall2;
+    Entity voxelTerrain[100];
     Entity earth;
     Entity dome;
 
@@ -81,19 +84,24 @@ typedef struct Permanent_Storage{
     i32 windowHeight;
     int numEntities;
     Entity* entities[5000];
+    Vec3 minimumPositions;
+    Vec3 maximumPositions;
 
-    GLuint fbo;
+    /*GLuint fbo;
     GLuint fbo_texture;
     GLuint fbo_normal;
     GLuint rbo_depth;
-    GLuint fbo_position;
+    GLuint fbo_position;*/
     GLuint vbo_fbo_vertices;
+    OpenglFrameBuffer defferedFbo;
 
-    GLuint shadow_fbo;
-    GLuint shadow_fbo_depth;
+    //GLuint shadow_fbo;
+    //GLuint shadow_fbo_depth;
+    OpenglFrameBuffer shadowmap_fbo;
+    OpenglFrameBuffer zprepass_fbo;
 
-    GLuint zprepass_fbo;
-    GLuint zprepass_fbo_depth;
+    /*GLuint zprepass_fbo;
+    GLuint zprepass_fbo_depth;*/
     ForwardPlus fplus;
 
     Shader postProcShader;
@@ -107,6 +115,14 @@ typedef struct Permanent_Storage{
     // TODO: make a shader pool
     Shader* shaders[10];
     u32 numShaders;
+
+    u32 mcubesBuffer;
+    u32 mcubesTexture;
+    u32 mcubesTexture2;
+    u32 tfeedbackBuffer;
+    u32 tfeedback;
+    u32 numberOfTriangles;
+    b32 captured;
 
     Game_State game;
 } Permanent_Storage;

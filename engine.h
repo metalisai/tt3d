@@ -80,5 +80,6 @@ Mesh *loadObjMesh(const char* fileName);
 Mesh *loadMesh(const char* fileName);
 
 Mesh *generateTerrainMesh();
+Mesh *terrainGen(r32 y);
 
 #endif // ENGINE_H

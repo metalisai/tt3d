@@ -16,7 +16,21 @@ typedef struct SurfaceShader
     GLuint viewMatixUnif;
     GLuint diffuseTexture;
     GLuint normalTexture;
+    GLuint cameraPosition;
+    GLuint modelMatrix;
 } SurfaceShader;
+
+typedef struct TerrainGenShader
+{
+    GLuint lightDirUnif;
+    GLuint transformMatrixUnif;
+    GLuint perspectiveMatrixUnif;
+    GLuint viewMatixUnif;
+    GLuint mcubesTexture1;
+    GLuint mcubesTexture2;
+    GLuint diffuseTexture;
+    GLuint cameraPosition;
+} TerrainGenShader;
 
 typedef struct PostProcShader
 {
@@ -79,6 +93,7 @@ typedef struct Shader
         struct PostProcShader postproc;
         SkydomeShader skydome;
         LightCullShader lightc;
+        TerrainGenShader terrainGen;
     };
     enum ShaderType type;
 } Shader;
@@ -180,7 +195,7 @@ void setPosition(Transform *transform, Vec3 pos);
 void updateTranslationMatrix(struct Transform *transform);
 void updateScaleMatrix(struct Transform *transform);
 void updateRotationMatrix(struct Transform *transform);
-Mat4 *calculateModelMatrix(Transform *transform);
+Mat4 calculateModelMatrix(Transform *transform);
 
 void cameraRecalculateMatrices(struct Camera *camera);
 Vec3 cameraCalculateForwardDirection(struct Camera *camera);
@@ -188,5 +203,41 @@ Vec3 cameraCalculateUpDirection(struct Camera *camera);
 Vec3 cameraCalculateRightDirection(struct Camera *camera);
 Mat4 cameraCalculateInverseViewMatrix(struct Camera *camera);
 void cameraInitialize(struct Camera *camera);
+
+// OPENGL
+#define OPENGL_SUPPORTED 1
+
+#ifdef OPENGL_SUPPORTED
+typedef struct OpenglDepthFBOTextures
+{
+    u32 depthTexture;
+} OpenglDepthFBOTextures;
+
+typedef struct OpenglDeferredFBOTextures
+{
+    u32 diffuseTexture;
+    u32 normalTexture;
+    u32 positionTexture;
+    u32 depthTexture;
+}OpenglDeferredFBOTextures;
+
+typedef struct OpenglFrameBuffer
+{
+    u32 fboHandle;
+    union
+    {
+        u32 fboTextures[6];
+        OpenglDepthFBOTextures depthFBO;
+        OpenglDeferredFBOTextures deferredFBO;
+    };
+    u32 textureCount;
+} OpenglFrameBuffer;
+
+void openglCreateDepthFBO(OpenglFrameBuffer* framebuffer, int width, int height, b32 isShadowMap);
+void openglCreateDeferredFBO(OpenglFrameBuffer *framebuffer, u32 screenW, u32 screenH);
+void openglDeleteFbo(OpenglFrameBuffer* framebuffer);
+void openglDeleteZPassBuffer(u32 frameBufferHandle, u32 depthTextureHandle);
+void openglCreateLightBuffers(u32* workGroupsX, u32* workGroupsY, u32* lightBufferObject, u32* lightElementBuffer, u32 width, u32 height);
+#endif
 
 #endif // RENDERER_H

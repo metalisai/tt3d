@@ -138,10 +138,10 @@ Vec3 vec3Cross(Vec3* v0, Vec3* v1)
 Quaternion quaternionFromAxisAngle(Vec3 a, r32 angle)
 {
     Quaternion q;
-    q.x = a.x * sin(angle/2);
-    q.y = a.y * sin(angle/2);
-    q.z = a.z * sin(angle/2);
-    q.w = cos(angle/2);
+    q.x = a.x * sin(angle/2.0f);
+    q.y = a.y * sin(angle/2.0f);
+    q.z = a.z * sin(angle/2.0f);
+    q.w = cos(angle/2.0f);
     return q;
 }
 
@@ -155,19 +155,19 @@ void quaternionMul(Quaternion* d, Quaternion* q0, Quaternion* q1)
 
 void mat4FromQuaternion(Mat4* d, Quaternion* quat)
 {
-    d->m[0] = 1 - 2*quat->y*quat->y - 2*quat->z*quat->z;
-    d->m[1] = 2*quat->x*quat->y + 2*quat->z*quat->w;
-    d->m[2] = 2*quat->x*quat->z - 2*quat->y*quat->w;
+    d->m[0] = 1.0f - 2.0f*quat->y*quat->y - 2.0f*quat->z*quat->z;
+    d->m[1] = 2.0f*quat->x*quat->y + 2.0f*quat->z*quat->w;
+    d->m[2] = 2.0f*quat->x*quat->z - 2.0f*quat->y*quat->w;
     d->m[3] = 0.0f;
 
-    d->m[4] = 2*quat->x*quat->y - 2*quat->z*quat->w;
-    d->m[5] = 1 - 2*quat->x*quat->x - 2*quat->z*quat->z;
-    d->m[6] = 2*quat->y*quat->z + 2*quat->x*quat->w;
+    d->m[4] = 2.0f*quat->x*quat->y - 2.0f*quat->z*quat->w;
+    d->m[5] = 1.0f - 2.0f*quat->x*quat->x - 2.0f*quat->z*quat->z;
+    d->m[6] = 2.0f*quat->y*quat->z + 2.0f*quat->x*quat->w;
     d->m[7] = 0.0f;
 
-    d->m[8] = 2*quat->x*quat->z + 2*quat->y*quat->w;
-    d->m[9] = 2*quat->y*quat->z - 2*quat->x*quat->w;
-    d->m[10] = 1 - 2*quat->x*quat->x - 2*quat->y*quat->y;
+    d->m[8] = 2.0f*quat->x*quat->z + 2.0f*quat->y*quat->w;
+    d->m[9] = 2.0f*quat->y*quat->z - 2.0f*quat->x*quat->w;
+    d->m[10] = 1.0f - 2.0f*quat->x*quat->x - 2.0f*quat->y*quat->y;
     d->m[11] = 0.0f;
 
     d->m[12] = 0.0f;
@@ -331,17 +331,14 @@ Mat4 ortho(r32 left, r32 right, r32 bottom, r32 top, r32 near, r32 far)
     ret.m12 = 0.f;
     ret.m13 = 0.f;
     ret.m14 = -(right+left)/(right-left);
-
     ret.m21 = 0.f;
     ret.m22 = 2.f/(top-bottom);
     ret.m23 = 0.f;
     ret.m24 = -(top+bottom)/(top-bottom);
-
     ret.m31 = 0.f;
     ret.m32 = 0.f;
     ret.m33 = -2.f/(far-near);
     ret.m34 = -(far+near)/(far-near);
-
     ret.m41 = 0.f;
     ret.m42 = 0.f;
     ret.m43 = 0.f;

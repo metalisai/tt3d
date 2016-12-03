@@ -397,7 +397,7 @@ Mesh* loadMesh(const char* fileName)
     void* data = malloc(byteCount);
     fread(data, 1, byteCount, file);
 
-    Mesh* mesh = malloc(sizeof(Mesh()));
+    Mesh* mesh = malloc(sizeof(Mesh));
     meshInit(mesh);
     mesh->cold->data = data;
     mesh->cold->vertices = verts;
