@@ -35,9 +35,6 @@ shared vec4 frustumPlanes[6];
 shared int visibleLightIndices[1024];
 shared mat4 viewProjection;
 
-// Took some light culling guidance from Dice's deferred renderer
-// http://www.dice.se/news/directx-11-rendering-battlefield-3/
-
 #define TILE_SIZE 16
 layout(local_size_x = TILE_SIZE, local_size_y = TILE_SIZE, local_size_z = 1) in;
 void main() {

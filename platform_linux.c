@@ -39,6 +39,7 @@ static PLATFORM_OPEN_FILE(linuxOpenFile) // macro defined in engine_platform.h
     else
     {
         result.noErrors = false;
+        free(handle);
     }
 
     return result;
@@ -112,10 +113,16 @@ int main()
     loadCode();
 
     //MemStack gameMemory;
-    size_t size = 200LL*1024LL*1024LL;
-    EngineMemory* eMem = (EngineMemory*)malloc(size); // 50MB
+    size_t size = Megabytes(200);
+    u64 permanentStorageSize = Megabytes(60);
+    u64 transientSotrageSize = size - permanentStorageSize - sizeof(EngineMemory);
+
+    EngineMemory* eMem = (EngineMemory*)malloc(size);
     eMem->gameState = (struct GameState*)((char*)eMem+sizeof(EngineMemory));
-    eMem->transientState = (struct TransientState*)((char*)eMem->gameState+60LL*1024LL*1024LL);
+    eMem->transientState = (struct TransientState*)((char*)eMem->gameState+permanentStorageSize);
+    eMem->transientStorageSize = transientSotrageSize;
+    eMem->permanentStorageSize = permanentStorageSize;
+
     eMem->platformApi.openFile      = (platformOpenFile*) linuxOpenFile;
     eMem->platformApi.closeFile     = (platformCloseFile*) linuxCloseFile;
     eMem->platformApi.readFromFile  = (platformReadFromFile*) linuxReadFromFile;
@@ -125,9 +132,12 @@ int main()
     Input input;
     memset(&input, 0, sizeof(input));
 
+    int width = 1024;
+    int height = 768;
+
     PlatformState state;
     state.display = XOpenDisplay(":0.0");
-    state.win = Linux_CreateWindow(state.display, 1024, 768, "Engine?");
+    state.win = Linux_CreateWindow(state.display, width, height, "Engine?");
     if(glewInit() != GLEW_OK)
     {
         printf("Glew Init failed!\n");
@@ -142,8 +152,8 @@ int main()
         printf("GL 4.4 NOT Supported, exiting!\n");
         return -1;
     }
-    init(eMem,1024,768);
-    reshape(eMem,1024,768);
+    init(eMem, width, height);
+    reshape(eMem, width, height);
     Atom wmDeleteMessage = XInternAtom(state.display, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(state.display, state.win, &wmDeleteMessage, True);
 
@@ -181,6 +191,9 @@ int main()
             case MotionNotify:
                 input.mousePosition.x = event.xmotion.x;
                 input.mousePosition.y = event.xmotion.y;
+
+                input.mouseCoord.x = (input.mousePosition.x/width)*2.0f - 1.0f;
+                input.mouseCoord.y = (1.0 - (input.mousePosition.y/height))*2.0f - 1.0f;
                 //pMouse(event.xmotion.x,event.xmotion.y);
                 break;
             case KeyPress:
@@ -202,6 +215,8 @@ int main()
                 {
                     XConfigureEvent xce = event.xconfigure;
                     // TODO: this event might not always be a resize event?
+                    width = xce.width;
+                    height = xce.height;
                     reshape(eMem,xce.width,xce.height);
                 }
                 break;
@@ -259,6 +274,11 @@ Window Linux_CreateWindow(Display* display, int width, int height, const char* w
         printf( "Failed to get XVisualInfo\n" );
         exit(1);
     }
+
+    //extern int EF_ALLOW_MALLOC_0; // for electric fence
+    //EF_ALLOW_MALLOC_0=1;
+    //printf("allow %d\n",EF_ALLOW_MALLOC_0);
+
     // Create the X window
     XSetWindowAttributes winAttr ;
     winAttr.event_mask = StructureNotifyMask | KeyPressMask| KeyReleaseMask | PointerMotionMask;

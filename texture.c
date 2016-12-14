@@ -3,11 +3,11 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "lib/stb_image.h"
 
-TexturePool* createTexturePool(i32 maxTextures, MemStack* stack)
+TexturePool* createTexturePool(i32 maxTextures, MemoryArena* stack)
 {
     // TODO: use some stack allocator
     TexturePool* ret = (TexturePool*)malloc(sizeof(TexturePool));
-    ret->beginAddr = (LoadedTexture*)stackPushSize(stack,sizeof(LoadedTexture)*maxTextures);
+    ret->beginAddr = (LoadedTexture*)arenaPushSize(stack,sizeof(LoadedTexture)*maxTextures);
     for(int i = 0; i < maxTextures; i++)
     {
         ret->beginAddr[i].used = false;
@@ -40,16 +40,4 @@ LoadedTexture* loadTextureToMemory(TexturePool* pool, const char* filename)
     tex->used = true;
     tex->boundToGPU = false;
     return tex;
-}
-
-void openGL_LoadTexture(LoadedTexture* tex)
-{
-    glGenTextures(1, &tex->gl_handle);
-    glBindTexture(GL_TEXTURE_2D, tex->gl_handle);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, tex->width, tex->height, 0, GL_RGB,
-                  GL_UNSIGNED_BYTE, tex->data);
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);  
-    tex->boundToGPU = true;
 }

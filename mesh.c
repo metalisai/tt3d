@@ -1,26 +1,24 @@
 #include "renderer.h"
 
-#include <assert.h>
 #include <string.h>
 #include <stdio.h>
-#include <math.h>
 
 void meshInit(Mesh* mesh)
 {
     mesh->VAO = -1;
     mesh->AttribBuffer = -1;
     mesh->ElementBuffer = -1;
-    mesh->cold = malloc(sizeof(MeshCold)); // TODO: this never gets deleted?
-    mesh->cold->loadedToGPU = false;
-    mesh->cold->data = NULL;
+    mesh->loadedToGPU = false;
+    mesh->data = NULL;
 }
 
 void openGL_loadMesh(Mesh* mesh)
 {
     // generate and populate buffers
-    assert(!mesh->cold->loadedToGPU);
-    int vertices = mesh->cold->vertices;
-    void* data = mesh->cold->data;
+    assert(!mesh->loadedToGPU);
+
+    u32 vertices = mesh->vertices;
+    void* data = mesh->data;
 
     glGenBuffers(1, &mesh->AttribBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, mesh->AttribBuffer);
@@ -55,42 +53,34 @@ void openGL_loadMesh(Mesh* mesh)
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    mesh->cold->loadedToGPU = true;
+    mesh->loadedToGPU = true;
 }
 
 void renderMesh(Mesh* mesh)
 {
     glBindVertexArray(mesh->VAO);
-    glEnableVertexAttribArray(0); // pos
-    glEnableVertexAttribArray(1); // normal
-    glEnableVertexAttribArray(2); // tex
-    glEnableVertexAttribArray(3); // tangent
     glDrawElements(GL_TRIANGLES, mesh->faces*3, GL_UNSIGNED_SHORT, 0);
-    glDisableVertexAttribArray(0); // pos
-    glDisableVertexAttribArray(1); // normal
-    glDisableVertexAttribArray(2); // tex
-    glDisableVertexAttribArray(3); // tangent
     glBindVertexArray(0);
 }
 
 void meshRecalculateBounds(Mesh* mesh)
 {
     r32 max = -999999.0;
-    Vec4* verts = (Vec4*)mesh->cold->data;
-    for(int i = 0; i < mesh->cold->vertices; i++)
+    Vec4* verts = (Vec4*)mesh->data;
+    for(int i = 0; i < mesh->vertices; i++)
     {
         r32 length2 = verts[i].x*verts[i].x+verts[i].y*verts[i].y+verts[i].z*verts[i].z;
         if(length2 > max)
             max = length2;
     }
     assert(max > 0);
-    mesh->boundingRadius = sqrt(max);
+    mesh->boundingRadius = sqrtf(max);
 }
 
 void meshRecalculateNormals(Mesh* mesh)
 {
-    void* modelData = mesh->cold->data;
-    int verts = mesh->cold->vertices;
+    void* modelData = mesh->data;
+    int verts = mesh->vertices;
     int faces = mesh->faces;
     Vec4* vertsP = (Vec4*)((char*)modelData);
     Vec3* normalsP = (Vec3*)(((char*)modelData)+verts*sizeof(Vec4));
@@ -147,7 +137,7 @@ void meshRecalculateNormals(Mesh* mesh)
         tangP[facesP[i*3+1]] = tangent;
         tangP[facesP[i*3+2]] = tangent;
 
-        if(isnan(normal.x) || isnan(normal.y) || isnan(normal.z))
+        if(isnanf(normal.x) || isnanf(normal.y) || isnanf(normal.z))
         {
             //printf("Nan while calculating normals (%d %f,%f,%f)(%d %f,%f,%f)(%d %f,%f,%f)",facesP[i*3+0],a.x,a.y,a.z,facesP[i*3+1],b.x,b.y,b.z,facesP[i*3+2],c.x,c.y,c.z);
             normal.x = 1.0f;
@@ -171,7 +161,7 @@ void meshRecalculateNormals(Mesh* mesh)
             normalsP[i].y = normed.y;
             normalsP[i].z = normed.z;
 
-            if(isnan(normed.x) || isnan(normed.y) || isnan(normed.z))
+            if(isnanf(normed.x) || isnanf(normed.y) || isnanf(normed.z))
             {
                 //printf("Nan while calculating normals2\n");
             }
@@ -219,9 +209,9 @@ Mesh* generatePlane()
 
     Mesh* mesh = malloc(sizeof(Mesh));
     meshInit(mesh);
-    mesh->cold->vertices = 4;
-    mesh->cold->normals = 4;
+    mesh->vertices = 4;
+    mesh->normals = 4;
     mesh->faces = 2;
-    mesh->cold->data = (void*)data;
+    mesh->data = (void*)data;
     return mesh;
 }

@@ -14,6 +14,7 @@ uniform vec3 camPos;
 uniform vec4 lightDir;
 uniform mat4 viewMat;
 uniform sampler2D tex;
+uniform int numberOfTilesX;
 
 smooth in vec3 theNormal;
 smooth in vec2 Texcoord;
@@ -28,12 +29,24 @@ layout(std430, binding = 1) readonly buffer VisibleLightIndicesBuffer {
 	VisibleIndex data[];
 } visibleLightIndicesBuffer;
 
-const int numberOfTilesX = 64;
+vec3 calculatePointLight(vec3 lightPos, vec4 lightColor, vec3 viewDir, float lightRadius)
+{
+	float lighting = 1.0;
+	vec3 pointLightDir = lightPos-thePos;
+	float lightDistance = length(pointLightDir);
+	pointLightDir = normalize(pointLightDir);
+	float attenuation = clamp((lightRadius-lightDistance)/lightRadius,0,1);
+
+	lighting = max(dot(pointLightDir,theNormal),0.0);
+	
+	vec3 halfwayDir = normalize(pointLightDir + viewDir);
+	float spec = pow(max(dot(theNormal, halfwayDir), 0.0), 32.0);	
+
+	return lightColor.rgb*(lighting+spec)*attenuation*lightColor.a;
+}
 
 void main()
 {
-   float lighting = 1.0;
-
    vec3 specular = vec3(0.0,0.0,0.0);
    //vec3 fnormal = normalize(theNormal);
 
@@ -43,6 +56,10 @@ void main()
 	ivec2 tileID = location / ivec2(16, 16);
 	uint index = tileID.y * numberOfTilesX + tileID.x;
 
+	// data that doesn't change for different lights
+	vec3 viewDir = normalize(camPos-thePos);
+
+	// POINT LIGHTS
 	uint offset = index * 1024;
 	for (uint i = 0; i < 1024 && visibleLightIndicesBuffer.data[offset + i].index != -1; i++)
 	{
@@ -50,24 +67,14 @@ void main()
 		vec4 lightpos = lightBuffer.data[index].position;
 		vec4 lightcol = lightBuffer.data[index].color;
 		float lightRadius = lightBuffer.data[index].paddingAndRadius.w;
-		vec3 pointLightDir = lightpos.xyz-thePos;
-		float lightDistance = length(pointLightDir);
-		pointLightDir = normalize(pointLightDir);
-		//float attenuation = 1.0 / clamp((1.0 + 0.3*lightDistance + 0.11*lightDistance*lightDistance),0.0001,99999.0);
-		float attenuation = clamp((lightRadius-lightDistance)/lightRadius,0,1);
-
-		lighting = max(dot(pointLightDir,theNormal),0.0);
-      //lighting *= attenuation;
-		
-
-      vec3 viewDir = normalize(camPos-thePos);
-		vec3 halfwayDir = normalize(pointLightDir + viewDir);
-   	float spec = pow(max(dot(theNormal, halfwayDir), 0.0), 32.0);	
-		//vec3 reflectDir = reflect(-pointLightDir, theNormal);
-   	//float spec = pow(max(dot(viewDir, reflectDir), 0.0), 8.0);	
-
-		gl_FragColor.rgb += lightcol.rgb*(lighting*diff+spec*diff)*attenuation*lightcol.a;
+		gl_FragColor.rgb += diff*calculatePointLight(lightpos.xyz, lightcol, viewDir, lightRadius);
 	}
+
+	// DIRECTIONAL LIGHT
+	vec3 halfwayDir = normalize(lightDir.xyz + viewDir);
+	float spec = pow(max(dot(theNormal, halfwayDir), 0.0), 32.0);	
+	gl_FragColor.rgb += lightDir.w * diff * clamp(dot(lightDir.xyz, theNormal) + spec, 0.0, 1.0); 
+
    //gl_FragColor.rgb = normalize(camPos);
 	gl_FragColor.a = 1.0;
 }

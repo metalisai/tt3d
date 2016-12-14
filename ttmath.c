@@ -2,7 +2,8 @@
 
 #include <math.h>
 
-IVec2 ivec2(i32 x, i32 y)
+
+inline IVec2 ivec2(i32 x, i32 y)
 {
     IVec2 ret;
     ret.x = x;
@@ -10,23 +11,23 @@ IVec2 ivec2(i32 x, i32 y)
     return ret;
 }
 
-Vec2 vec2Zero()
+inline Vec2 vec2Zero()
 {
     Vec2 vec = {0.f,0.f};
     return vec;
 }
-Vec3 vec3Zero()
+inline Vec3 vec3Zero()
 {
     Vec3 vec = {0.0f,0.0f,0.0f};
     return vec;
 }
-Vec4 vec4Zero()
+inline Vec4 vec4Zero()
 {
     Vec4 vec = {0.0f,0.0f,0.0f,0.0f};
     return vec;
 }
 
-Vec2 vec2(r32 x, r32 y)
+inline Vec2 vec2(r32 x, r32 y)
 {
     Vec2 vec;
     vec.x = x;
@@ -34,7 +35,7 @@ Vec2 vec2(r32 x, r32 y)
     return vec;
 }
 
-Vec3 vec3(r32 x, r32 y, r32 z)
+inline Vec3 vec3(r32 x, r32 y, r32 z)
 {
     Vec3 vec;
     vec.x = x;
@@ -43,7 +44,7 @@ Vec3 vec3(r32 x, r32 y, r32 z)
     return vec;
 }
 
-Vec4 vec4(r32 x, r32 y, r32 z, r32 w)
+inline Vec4 vec4(r32 x, r32 y, r32 z, r32 w)
 {
     Vec4 vec;
     vec.x = x;
@@ -53,7 +54,7 @@ Vec4 vec4(r32 x, r32 y, r32 z, r32 w)
     return vec;
 }
 
-Vec4 vec4FromVec3AndW(Vec3 v, r32 w)
+inline Vec4 vec4FromVec3AndW(Vec3 v, r32 w)
 {
     Vec4 vec;
     vec.x = v.x;
@@ -63,7 +64,7 @@ Vec4 vec4FromVec3AndW(Vec3 v, r32 w)
     return vec;
 }
 
-Vec3 vec3FromVec4(Vec4 v)
+inline Vec3 vec3FromVec4(Vec4 v)
 {
     Vec3 vec;
     vec.x = v.x;
@@ -72,7 +73,7 @@ Vec3 vec3FromVec4(Vec4 v)
     return vec;
 }
 
-Quaternion quaternion(r32 w, r32 x, r32 y, r32 z)
+inline Quaternion quaternion(r32 w, r32 x, r32 y, r32 z)
 {
     Quaternion quat;
     quat.w = w;
@@ -82,26 +83,26 @@ Quaternion quaternion(r32 w, r32 x, r32 y, r32 z)
     return quat;
 }
 
-void vec2Sub(Vec2* d, Vec2* v0, Vec2* v1) { VEC2_OP(d,v0,-,v1) }
-void vec3Sub(Vec3* d, Vec3* v0, Vec3* v1) { VEC3_OP(d,v0,-,v1) }
-void vec4Sub(Vec4* d, Vec4* v0, Vec4* v1) { VEC4_OP(d,v0,-,v1) }
+inline void vec2Sub(Vec2 *d, Vec2 *v0, Vec2 *v1) { VEC2_OP(d,v0,-,v1) }
+inline void vec3Sub(Vec3 *d, Vec3 *v0, Vec3 *v1) { VEC3_OP(d,v0,-,v1) }
+inline void vec4Sub(Vec4 *d, Vec4 *v0, Vec4 *v1) { VEC4_OP(d,v0,-,v1) }
 
-void vec2Add(Vec2* d, Vec2* v0, Vec2* v1) { VEC2_OP(d,v0,+,v1) }
-void vec3Add(Vec3* d, Vec3* v0, Vec3* v1) { VEC3_OP(d,v0,+,v1) }
-void vec4Add(Vec4* d, Vec4* v0, Vec4* v1) { VEC4_OP(d,v0,+,v1) }
+inline void vec2Add(Vec2 *d, Vec2 *v0, Vec2 *v1) { VEC2_OP(d,v0,+,v1) }
+inline void vec3Add(Vec3 *d, Vec3 *v0, Vec3 *v1) { VEC3_OP(d,v0,+,v1) }
+inline void vec4Add(Vec4 *d, Vec4 *v0, Vec4 *v1) { VEC4_OP(d,v0,+,v1) }
 
-void vec2Mul(Vec2* d, Vec2* v0, Vec2* v1) { VEC2_OP(d,v0,*,v1) }
-void vec3Mul(Vec3* d, Vec3* v0, Vec3* v1) { VEC3_OP(d,v0,*,v1) }
-void vec4Mul(Vec4* d, Vec4* v0, Vec4* v1) { VEC4_OP(d,v0,*,v1) }
+inline void vec2Mul(Vec2 *d, Vec2 *v0, Vec2 *v1) { VEC2_OP(d,v0,*,v1) }
+inline void vec3Mul(Vec3 *d, Vec3 *v0, Vec3 *v1) { VEC3_OP(d,v0,*,v1) }
+inline void vec4Mul(Vec4 *d, Vec4 *v0, Vec4 *v1) { VEC4_OP(d,v0,*,v1) }
 
-void vec3Scale (Vec3* d, Vec3* v, r32 s)
+inline void vec3Scale (Vec3 *d, Vec3 *v, r32 s)
 {
     d->x = v->x * s;
     d->y = v->y * s;
     d->z = v->z * s;
 }
 
-void vec4Scale (Vec4* d, Vec4* v, r32 s)
+inline void vec4Scale (Vec4 *d, Vec4 *v, r32 s)
 {
     d->x = v->x * s;
     d->y = v->y * s;
@@ -109,24 +110,43 @@ void vec4Scale (Vec4* d, Vec4* v, r32 s)
     d->w = v->w * s;
 }
 
-r32 vec3Dot(Vec3* v0, Vec3* v1)
+inline r32 clamp01(r32 v)
+{
+    if(v < 0.0f)
+        return 0.0f;
+    if(v > 1.0f)
+        return 1.0f;
+    return v;
+}
+
+inline r32 vec3Dot(Vec3 *v0, Vec3 *v1)
 {
     return v0->x*v1->x+v0->y*v1->y+v0->z*v1->z;
 }
 
-r32 vec3Mag(Vec3* v)
+inline r32 vec2Mag(Vec2 *v)
 {
-    return sqrt(v->x*v->x+v->y*v->y+v->z*v->z);
+    return (r32)sqrt(v->x*v->x+v->y*v->y);
 }
 
-Vec3 vec3Normalized(Vec3* v)
+inline r32 vec3Mag(Vec3 *v)
+{
+    return (r32)sqrt(v->x*v->x+v->y*v->y+v->z*v->z);
+}
+
+inline r32 vec3Mag2(Vec3 *v)
+{
+    return (r32)v->x*v->x+v->y*v->y+v->z*v->z;
+}
+
+inline Vec3 vec3Normalized(Vec3 *v)
 {
     Vec3 ret;
     vec3Scale(&ret, v, 1.0f / vec3Mag(v));
     return ret;
 }
 
-Vec3 vec3Cross(Vec3* v0, Vec3* v1)
+inline Vec3 vec3Cross(Vec3 *v0, Vec3 *v1)
 {
     Vec3 ret;
     ret.x = v0->y*v1->z-v0->z*v1->y;
@@ -135,17 +155,17 @@ Vec3 vec3Cross(Vec3* v0, Vec3* v1)
     return ret;
 }
 
-Quaternion quaternionFromAxisAngle(Vec3 a, r32 angle)
+inline Quaternion quaternionFromAxisAngle(Vec3 a, r32 angle)
 {
     Quaternion q;
-    q.x = a.x * sin(angle/2.0f);
-    q.y = a.y * sin(angle/2.0f);
-    q.z = a.z * sin(angle/2.0f);
+    q.x = a.x * (float)sinf(angle/2.0f);
+    q.y = a.y * (float)sinf(angle/2.0f);
+    q.z = a.z * (float)sinf(angle/2.0f);
     q.w = cos(angle/2.0f);
     return q;
 }
 
-void quaternionMul(Quaternion* d, Quaternion* q0, Quaternion* q1)
+void quaternionMul(Quaternion *d, Quaternion *q0, Quaternion *q1)
 {
     d->w = q0->w * q1->w - q0->x * q1->x - q0->y * q1->y - q0->z * q1->z;  // 1
     d->x = q0->w * q1->x + q0->x * q1->w + q0->y * q1->z - q0->z * q1->y;  // i
@@ -153,7 +173,7 @@ void quaternionMul(Quaternion* d, Quaternion* q0, Quaternion* q1)
     d->z = q0->w * q1->z + q0->x * q1->y - q0->y * q1->x + q0->z * q1->w;  // k
 }
 
-void mat4FromQuaternion(Mat4* d, Quaternion* quat)
+void mat4FromQuaternion(Mat4 *d, Quaternion *quat)
 {
     d->m[0] = 1.0f - 2.0f*quat->y*quat->y - 2.0f*quat->z*quat->z;
     d->m[1] = 2.0f*quat->x*quat->y + 2.0f*quat->z*quat->w;
@@ -176,7 +196,7 @@ void mat4FromQuaternion(Mat4* d, Quaternion* quat)
     d->m[15] = 1.0f;
 }
 
-void mat4Mul(Mat4* d, Mat4* m0, Mat4* m1)
+void mat4Mul(Mat4 *d, Mat4 *m0, Mat4 *m1)
 {
     // TODO: is this intermediate step necessary?
     float i11, i12, i13, i14;
@@ -207,7 +227,7 @@ void mat4Mul(Mat4* d, Mat4* m0, Mat4* m1)
     d->m41 = i41; d->m42 = i42; d->m43 = i43; d->m44 = i44;
 }
 
-void mat4Vec4Mul(Vec4* d, Mat4* m, Vec4* v)
+inline void mat4Vec4Mul(Vec4 *d, Mat4 *m, Vec4 *v)
 {
     d->x = v->x*m->m11+v->y*m->m12+v->z*m->m13+v->w*m->m14;
     d->y = v->x*m->m21+v->y*m->m22+v->z*m->m23+v->w*m->m24;
@@ -215,7 +235,7 @@ void mat4Vec4Mul(Vec4* d, Mat4* m, Vec4* v)
     d->w = v->x*m->m41+v->y*m->m42+v->z*m->m43+v->w*m->m44;
 }
 
-Vec4 mat4GetRow(Mat4* m, int rowIndex)
+Vec4 mat4GetRow(Mat4 *m, int rowIndex)
 {
     Vec4 ret;
     switch(rowIndex)
@@ -248,12 +268,12 @@ Vec4 mat4GetRow(Mat4* m, int rowIndex)
     return ret;
 }
 
-Quaternion conjugate(Quaternion q)
+inline Quaternion conjugate(Quaternion q)
 {
     return quaternion(-q.w,-q.x,q.y,q.z);
 }
 
-Plane planeFromVec4(Vec4* v)
+inline Plane planeFromVec4(Vec4 *v)
 {
     Plane ret;
     ret.a = v->x;
@@ -263,12 +283,12 @@ Plane planeFromVec4(Vec4* v)
     return ret;
 }
 
-r32 min(r32 a, r32 b)
+inline r32 min(r32 a, r32 b)
 {
     return a < b ? a : b;
 }
 
-r32 max(r32 a, r32 b)
+inline r32 max(r32 a, r32 b)
 {
     return a > b ? a : b;
 }
@@ -276,7 +296,7 @@ r32 max(r32 a, r32 b)
 Mat4 projMatrix(float fov, float aspect, float zNear, float zFar)
 {
     Mat4 ret;
-    const float h = 1.0f/tan(fov*PI_OVER_360);
+    const float h = 1.0f/(float)tan(fov*PI_OVER_360);
     float neg_depth = zNear-zFar;
 
     ret.m[0] = h / aspect;
@@ -302,7 +322,7 @@ Mat4 projMatrix(float fov, float aspect, float zNear, float zFar)
     return ret;
 }
 
-Mat4 invPerspective(Mat4* perspectiveMat)
+Mat4 invPerspective(Mat4 *perspectiveMat)
 {
     Mat4 ret;
     float a = perspectiveMat->m[0];
@@ -397,7 +417,7 @@ Mat4 translate(Vec3 pos)
     return ret;
 }
 
-void getFrustumPlanes(Mat4* projectionMatrix, Plane* planeArray)
+void getFrustumPlanes(Mat4 *projectionMatrix, Plane *planeArray)
 {
     Vec4 planes[6];
     Vec4 rows[4];
@@ -417,4 +437,40 @@ void getFrustumPlanes(Mat4* projectionMatrix, Plane* planeArray)
     planeArray[3] = planeFromVec4(&planes[3]);
     planeArray[4] = planeFromVec4(&planes[4]);
     planeArray[5] = planeFromVec4(&planes[5]);
+}
+
+inline r32 floorf(r32 x)
+{
+#ifdef USE_SIMD
+    __m128 f = _mm_set_ss(x);
+    __m128 one = _mm_set_ss(1.0f);
+
+    __m128 t = _mm_cvtepi32_ps(_mm_cvttps_epi32(f));
+    __m128 r = _mm_sub_ps(t, _mm_and_ps(_mm_cmplt_ps(f, t), one));
+
+    return _mm_cvtss_f32(r);
+#else
+    // TODO: implement non SIMD version
+    assert(false);
+#endif
+}
+
+inline r32 powf(r32 x, r32 power)
+{
+    return (r32)pow(x, power);
+}
+
+inline r32 absf(r32 x)
+{
+    return x < 0.0f ? -x : x;
+}
+
+inline r32 sqrtf(r32 x)
+{
+    return sqrt((r64)x);
+}
+
+b32 isnanf(r32 x)
+{
+    return isnan(x);
 }

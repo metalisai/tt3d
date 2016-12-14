@@ -1,22 +1,10 @@
 #ifndef ENGINE_H
 #define ENGINE_H
 
-#include <stdio.h>
 #include <GL/glew.h>
 
 #include "shared.h"
 #include "renderer.h"
-
-
-typedef struct Character {
-    GLuint     TextureID;  // ID handle of the glyph texture
-    IVec2 Size;       // Size of glyph
-    IVec2 Bearing;    // Offset from baseline to left/top of glyph
-    GLuint     Advance;    // Offset to advance to next glyph
-} Character;
-
-void InitText(); // in debug.cpp
-void RenderText(char* text, GLfloat x, GLfloat y, GLfloat scale);
 
 
 #define KEYCODE_Q               1
@@ -62,14 +50,57 @@ void RenderText(char* text, GLfloat x, GLfloat y, GLfloat scale);
 Mesh *generatePlane();
 
 #define NUM_BUFFERS 2
+#define MAX_TUNNELS 64
+
+typedef struct DebugState
+{
+    void* lineMem;
+    u32 lines;
+    GLuint lineBuffer;
+    GLuint lineVAO;
+} DebugState;
+
+typedef struct Line3D
+{
+    Vec4 start;
+    Vec4 end;
+} Line3D;
+
+typedef struct ChunkGenData
+{
+    u32 tunnelCount;
+    r32 firstOctaveMax;
+    r32 secondOctaveMax;
+    r32 padding;
+    r32 dxgoalFirstOctaveMax;
+    r32 dxgoalSecondOctaveMax;
+    r32 dzgoalFirstOctaveMax;
+    r32 dzgoalSecondOctaveMax;
+    Vec4 chunkOrigin;
+    Line3D tunnels[MAX_TUNNELS];
+} ChunkGenData;
+
+typedef struct TerrainGeneratorState
+{
+    GLuint vertInbuffer;
+    ChunkGenData tunnelData;
+    GLuint vertAtomicBuffer;
+    GLuint tunnelBuffer;
+    GLuint edgeVertexBuffer;
+    u32 chunkXWidth;
+    u32 chunkYWidth;
+    u32 cubesPerSeed;
+    r32 voxelScale;
+    b32 initialized;
+} TerrainGeneratorState;
 
 int initAudio();
 void setListenerTransform(Vec3 pos, Vec3 fwd, Vec3 up);
 void audioExit();
 
-void setupDebug();
-void drawLine(Vec3 start, Vec3 end);
-void drawDebugLines(Shader lineShader, Camera *cam);
+void setupDebug(DebugState* dstate);
+void drawLine(DebugState* dstate, Vec3 start, Vec3 end);
+void drawDebugLines(DebugState* dstate, Shader lineShader, Camera *cam);
 
 b32 ignore(FILE *file, char delim);
 void skip(FILE *file, char delim);
@@ -81,5 +112,8 @@ Mesh *loadMesh(const char* fileName);
 
 Mesh *generateTerrainMesh();
 Mesh *terrainGen(r32 y);
+
+void openglInitializeTerrainGeneration(TerrainGeneratorState* tgstate, u32 chunkXWidth, u32 chunkYWidth, u32 cubesPerSeed, r32 voxelScale);
+void openglPrepageTerrainGeneration(TerrainGeneratorState* tgstate, GLuint outBuffer, Vec3 chunkOffset);
 
 #endif // ENGINE_H

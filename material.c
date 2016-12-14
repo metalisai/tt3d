@@ -38,12 +38,24 @@ GLuint createShader(GLenum eShaderType, const char* shaderData, int fsize)
 GLuint loadShader(GLenum eShaderType, const char* shaderFileName)
 {
     PlatformFileHandle fh = Platform.openFile(shaderFileName);
-    int size = Platform.getFileSize(&fh);
-    void* fmem = malloc(size);
-    Platform.readFromFile(&fh, 0, size, fmem);
-    // TODO: check errors
-    return createShader(eShaderType, (char*)fmem, size);
-    free(fmem);
+    if(fh.noErrors)
+    {
+        int size = Platform.getFileSize(&fh);
+        void* fmem = malloc(size);
+        Platform.readFromFile(&fh, 0, size, fmem);
+        // TODO: check errors
+        GLuint ret = createShader(eShaderType, (char*)fmem, size);
+        free(fmem);
+
+        Platform.closeFile(&fh);
+
+        return ret;
+    }
+    else
+    {
+        printf("Failed to open shader file %s\n",shaderFileName);
+        return -1;
+    }
 }
 
 GLuint createProgram(GLuint* shaderList, int pcount)
@@ -53,28 +65,65 @@ GLuint createProgram(GLuint* shaderList, int pcount)
     for(size_t iLoop = 0; iLoop < pcount; iLoop++)
         glAttachShader(program, shaderList[iLoop]);
 
+    int glerror = glGetError();
+    if(glerror != 0)
+    {
+        printf("Error: %d\n", glerror);
+        __builtin_trap();
+    }
+
     if(pcount == 3) // TODO: remove this hack?
     {
-        const GLchar* feedbackVaryings[] = { "outVertPos", "theNormal", "thePos"};
-        glTransformFeedbackVaryings(program, 3, feedbackVaryings, GL_INTERLEAVED_ATTRIBS);
+        const GLchar* feedbackVaryings[] = { "outVertPos", "theNormal"};
+        glTransformFeedbackVaryings(program, 2, feedbackVaryings, GL_INTERLEAVED_ATTRIBS);
     }
 
     glLinkProgram(program);
+
+    glerror = glGetError();
+    if(glerror != 0)
+    {
+        printf("Error: %d\n", glerror);
+        __builtin_trap();
+    }
 
     GLint status;
     glGetProgramiv (program, GL_LINK_STATUS, &status);
     GLint infoLogLength;
     glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infoLogLength);
-    if (/*status == GL_FALSE*/infoLogLength > 0)
+
+    glerror = glGetError();
+    if(glerror != 0)
     {
-        GLint infoLogLength;
-        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infoLogLength);
+        printf("Error: %d\n", glerror);
+        __builtin_trap();
+    }
+    if (infoLogLength > 0)
+    {
+        if(glerror != 0)
+        {
+            printf("Error: %d\n", glerror);
+            __builtin_trap();
+        }
 
         GLchar *strInfoLog = (GLchar *)malloc(sizeof(GLchar[infoLogLength + 1]));
         glGetProgramInfoLog(program, infoLogLength, NULL, strInfoLog);
-        glGetProgramPipelineInfoLog(program, infoLogLength, NULL, strInfoLog);
+        glerror = glGetError();
+        if(glerror != 0)
+        {
+            printf("Error: %d\n", glerror);
+            __builtin_trap();
+        }
+        //glGetProgramPipelineInfoLog(program, infoLogLength, NULL, strInfoLog);
         printf("Linker failure: %s\n", strInfoLog);
         free(strInfoLog);
+    }
+
+    glerror = glGetError();
+    if(glerror != 0)
+    {
+        printf("Error: %d\n", glerror);
+        __builtin_trap();
     }
 
     for(size_t iLoop = 0; iLoop < pcount; iLoop++)
@@ -88,7 +137,7 @@ void initializeComputeProgram(Shader* shader, const char* computeFile, enum Shad
     GLuint shaderList[1];
     shader->type = type;
     shaderList[0] = loadShader(GL_COMPUTE_SHADER, computeFile);
-    //shaderList.push_back(LoadShader(GL_FRAGMENT_SHADER, fragFile));
+    //shaderList.push_back(LoadShader(GL_FRAGMENT_SHADER, fragFile));  
     shader->program = createProgram(shaderList, 1);
     for (int i = 0; i < 1; ++i)
     {
@@ -114,19 +163,48 @@ void initializeComputeProgram(Shader* shader, const char* computeFile, enum Shad
         else if(shader->lightc.view == 0xFFFFFFFF)
             printf("view location not found  %s\n"       ,computeFile);
         break;
+    case ST_Particle:
+        shader->terrainGen.lightDirUnif = glGetUniformLocation(shader->program, "lightDir");
+        shader->terrainGen.transformMatrixUnif = glGetUniformLocation(shader->program, "transformMatrix");
+        shader->terrainGen.perspectiveMatrixUnif = glGetUniformLocation(shader->program, "perspectiveMatrix");
+        shader->terrainGen.diffuseTexture = glGetUniformLocation(shader->program, "tex");
+        shader->terrainGen.mcubesTexture1 = glGetUniformLocation(shader->program, "mcubesLookup");
+        shader->terrainGen.mcubesTexture2 = glGetUniformLocation(shader->program, "mcubesLookup2");
+        //shader->surface.normalTexture = glGetUniformLocation(shader->program, "normalSampler");
+        shader->terrainGen.viewMatixUnif = glGetUniformLocation(shader->program, "viewMat");
+        shader->terrainGen.cameraPosition = glGetUniformLocation(shader->program, "camPos");
+        shader->terrainGen.worldOffset = glGetUniformLocation(shader->program, "worldOffset");
+        shader->terrainGen.voxelScale = glGetUniformLocation(shader->program, "voxelScale");
+        break;
+    default:
+        INVALID_CODE_PATH
+        break;
     }
 }
 
-void initializeProgram(Shader* shader, const char* vertFile, const char* fragFile, enum ShaderType type)
+void* shaderGetProperty(Shader* shader, const char* propertyname)
+{
+    return INT2VOIDP(glGetUniformLocation(shader->program, propertyname));
+}
+
+void materialLoadProperties(Material* mat)
+{
+    for(u32 i = 0; i < mat->numProperties; i++)
+    {
+        mat->properties[i].handle = shaderGetProperty(mat->shader, mat->properties[i].name);
+    }
+}
+
+void initializeProgram(Shader* shader, const char* vertFile, const char* fragFile, const char* geoFile, enum ShaderType type)
 {
     GLuint shaderList[3];
     int pcount = 2;
     shader->type = type;
     shaderList[0] = loadShader(GL_VERTEX_SHADER, vertFile);
     shaderList[1] = loadShader(GL_FRAGMENT_SHADER, fragFile);
-    if(type == ST_Particle)
+    if(geoFile != 0)
     {
-        shaderList[2] = loadShader(GL_GEOMETRY_SHADER, "shaders/particle_geo.glsl");
+        shaderList[2] = loadShader(GL_GEOMETRY_SHADER, geoFile);
         pcount = 3;
     }
     shader->program = createProgram(shaderList, pcount);
@@ -145,6 +223,7 @@ void initializeProgram(Shader* shader, const char* vertFile, const char* fragFil
         shader->surface.viewMatixUnif = glGetUniformLocation(shader->program, "viewMat");
         shader->surface.cameraPosition = glGetUniformLocation(shader->program, "camPos");
         shader->surface.modelMatrix = glGetUniformLocation(shader->program, "modelMatrix");
+        shader->surface.numberOfTilesX = glGetUniformLocation(shader->program, "numberOfTilesX");
         /*if(shader->surface.lightDirUnif == 0xFFFFFFFF)
             printf("lightdir location not found  %s %s\n",vertFile,fragFile);
         if(shader->surface.perspectiveMatrixUnif == 0xFFFFFFFF)
@@ -182,6 +261,8 @@ void initializeProgram(Shader* shader, const char* vertFile, const char* fragFil
         //shader->surface.normalTexture = glGetUniformLocation(shader->program, "normalSampler");
         shader->terrainGen.viewMatixUnif = glGetUniformLocation(shader->program, "viewMat");
         shader->terrainGen.cameraPosition = glGetUniformLocation(shader->program, "camPos");
+        shader->terrainGen.worldOffset = glGetUniformLocation(shader->program, "worldOffset");
+        shader->terrainGen.voxelScale = glGetUniformLocation(shader->program, "voxelScale");
         break;
     case ST_Skydome:
         shader->skydome.scaleMatrix           = glGetUniformLocation(shader->program, "scaleMatrix"         );
@@ -240,6 +321,10 @@ void initializeProgram(Shader* shader, const char* vertFile, const char* fragFil
         if(shader->skydome.fScaleOverScaleDepth == 0xFFFFFFFF)
             printf("fScaleOverScaleDepth location not found %s %s\n",vertFile,fragFile);*/
         break;
+        default:
+        {
+            INVALID_CODE_PATH
+        } break;
     }
 }
 

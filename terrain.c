@@ -53,10 +53,10 @@ Mesh* generateTerrainMesh()
 
     Mesh* mesh = malloc(sizeof(Mesh));
     meshInit(mesh);
-    mesh->cold->vertices = width*height;
-    mesh->cold->normals = width*height;
+    mesh->vertices = width*height;
+    mesh->normals = width*height;
     mesh->faces = (width-1) * (height-1)*2;
-    mesh->cold->data = (void*)data;
+    mesh->data = (void*)data;
     meshRecalculateBounds(mesh);
     return mesh;
 }

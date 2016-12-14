@@ -11,7 +11,8 @@ HEADERS += stb_perlin.h \
     renderer.h \
     engine.h \
     shared.h \
-    engine_platform.h
+    engine_platform.h \
+    opencl.h
 
 SOURCES += \
     platform_linux.c \
@@ -30,7 +31,7 @@ SOURCES += \
     audio.c \
     opengl.c \
     voxel_terrain.c \
-    rendergroup.cpp
+    renderer.c
 
 LIBS += -lGL
 LIBS += -lGLEW

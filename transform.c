@@ -72,6 +72,7 @@ void setPosition(Transform* transform, Vec3 pos)
     transform->position = pos;
 }
 
+// TODO: dont force this copy?
 Mat4 calculateModelMatrix(Transform* transform)
 {
     if(transform->dirty)

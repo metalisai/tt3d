@@ -54,37 +54,6 @@ static const GLfloat a2fEdgeDirection[12][3] =
     {0.0, 0.0, 1.0},{0.0, 0.0, 1.0},{ 0.0, 0.0, 1.0},{0.0,  0.0, 1.0}
 };
 
-//a2iTetrahedronEdgeConnection lists the index of the endpoint vertices for each of the 6 edges of the tetrahedron
-static const GLint a2iTetrahedronEdgeConnection[6][2] =
-{
-    {0,1},  {1,2},  {2,0},  {0,3},  {1,3},  {2,3}
-};
-
-//a2iTetrahedronEdgeConnection lists the index of verticies from a cube
-// that made up each of the six tetrahedrons within the cube
-static const GLint a2iTetrahedronsInACube[6][4] =
-{
-    {0,5,1,6},
-    {0,1,2,6},
-    {0,2,3,6},
-    {0,3,7,6},
-    {0,7,4,6},
-    {0,4,5,6},
-};
-
-static const GLfloat afAmbientWhite [] = {0.25, 0.25, 0.25, 1.00};
-static const GLfloat afAmbientRed   [] = {0.25, 0.00, 0.00, 1.00};
-static const GLfloat afAmbientGreen [] = {0.00, 0.25, 0.00, 1.00};
-static const GLfloat afAmbientBlue  [] = {0.00, 0.00, 0.25, 1.00};
-static const GLfloat afDiffuseWhite [] = {0.75, 0.75, 0.75, 1.00};
-static const GLfloat afDiffuseRed   [] = {0.75, 0.00, 0.00, 1.00};
-static const GLfloat afDiffuseGreen [] = {0.00, 0.75, 0.00, 1.00};
-static const GLfloat afDiffuseBlue  [] = {0.00, 0.00, 0.75, 1.00};
-static const GLfloat afSpecularWhite[] = {1.00, 1.00, 1.00, 1.00};
-static const GLfloat afSpecularRed  [] = {1.00, 0.25, 0.25, 1.00};
-static const GLfloat afSpecularGreen[] = {0.25, 1.00, 0.25, 1.00};
-static const GLfloat afSpecularBlue [] = {0.25, 0.25, 1.00, 1.00};
-
 
 GLenum    ePolygonMode = GL_FILL;
 GLint     iDataSetSize = 16;
@@ -390,11 +359,11 @@ Mesh* terrainGen(r32 y)
 
     Mesh* mesh = malloc(sizeof(Mesh));
     meshInit(mesh);
-    mesh->cold->vertices = vertexCount;
-    mesh->cold->normals = vertexCount;
+    mesh->vertices = vertexCount;
+    mesh->normals = vertexCount;
     mesh->faces = vertexCount/3;
-    mesh->cold->data = (void*)data;
-    mesh->cold->loadedToGPU = false;
+    mesh->data = (void*)data;
+    mesh->loadedToGPU = false;
 
     meshRecalculateBounds(mesh);
     return mesh;
@@ -504,19 +473,6 @@ Mesh* terrainGen(r32 y)
         vMarchTetrahedron(asTetrahedronPosition, afTetrahedronValue);
     }
 }*/
-
-
-//vMarchingCubes iterates over the entire dataset, calling vMarchCube on each cube
-GLvoid vMarchingCubes()
-{
-    GLint iX, iY, iZ;
-    for(iX = 0; iX < iDataSetSize; iX++)
-    for(iY = 0; iY < iDataSetSize; iY++)
-    for(iZ = 0; iZ < iDataSetSize; iZ++)
-    {
-            vMarchCube(iX*fStepSize, iY*fStepSize, iZ*fStepSize, fStepSize);
-    }
-}
 
 
 // For any edge, if one vertex is inside of the surface and the other is outside of the surface

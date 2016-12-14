@@ -199,6 +199,15 @@ void vMarchCube1(vec3 wcoord)
     float fOffset;
     vec3 asEdgeVertex[12];
 
+	 float afCubeValuem[17][17][17];
+    for(int i = 0; i < 17; i++){
+    	for(int j = 0; j < 17; j++){
+    		for(int k = 0; k < 17; k++){
+    			afCubeValuem[i][j][k] = voxel((wcoord + voxelScale*vec3(float(i),float(j),float(k))));
+ 			}
+ 		}
+    }
+
     /*iFlagIndex = 0;
 
     vec4 afCubeValuev[2];
@@ -216,14 +225,14 @@ void vMarchCube1(vec3 wcoord)
 		dot(ivec4(16, 32, 64, 128)*ivec4(step(afCubeValuev[1],vec4(0.0))),ivec4(1)) + vec4(0.1)); */
 
 	 float afCubeValue[8];
-	 afCubeValue[0] = voxel((wcoord + voxelScale*a2fVertexOffsetv[0]));
-    afCubeValue[1] = voxel((wcoord + voxelScale*a2fVertexOffsetv[1]));
-    afCubeValue[2] = voxel((wcoord + voxelScale*a2fVertexOffsetv[2]));
-    afCubeValue[3] = voxel((wcoord + voxelScale*a2fVertexOffsetv[3]));
-    afCubeValue[4] = voxel((wcoord + voxelScale*a2fVertexOffsetv[4]));
-    afCubeValue[5] = voxel((wcoord + voxelScale*a2fVertexOffsetv[5]));
-    afCubeValue[6] = voxel((wcoord + voxelScale*a2fVertexOffsetv[6]));
-    afCubeValue[7] = voxel((wcoord + voxelScale*a2fVertexOffsetv[7]));
+	 afCubeValue[0] = afCubeValuem[0][0][0];
+    afCubeValue[1] = afCubeValuem[1][0][0];
+    afCubeValue[2] = afCubeValuem[1][1][0];
+    afCubeValue[3] = afCubeValuem[0][1][0];
+    afCubeValue[4] = afCubeValuem[0][0][1];
+    afCubeValue[5] = afCubeValuem[1][0][1];
+    afCubeValue[6] = afCubeValuem[1][1][1];
+    afCubeValue[7] = afCubeValuem[0][1][1];
 	 iFlagIndex = 0;
     for(iVertexTest = 0; iVertexTest < 8; iVertexTest++)
     {

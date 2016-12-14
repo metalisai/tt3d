@@ -1,7 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <assert.h>
-#include <string.h>
 #include "renderer.h"
 
 // ignores until delimiter
@@ -79,7 +75,7 @@ void getModelStats(char const* fileName, int* verts, int* faces/*, int& normals*
                 if(ch == ' ')
                 {
                     ignore(file,'\n');
-                    *verts++;
+                    //*verts++;
                 }
                 else if(ch == 'n')
                 {
@@ -367,13 +363,10 @@ Mesh* loadObjMesh(const char* fileName)
 
     Mesh* ret = malloc(sizeof(Mesh));
     meshInit(ret);
-    ret->cold->vertices = verts;
+    ret->vertices = verts;
     ret->faces = faces;
-    ret->cold->normals = normals;
-    ret->cold->data = (void*)modelData;
-
-    //free((void*)texCoordBuffer);
-
+    ret->normals = normals;
+    ret->data = (void*)modelData;
     return ret;
 }
 
@@ -399,8 +392,8 @@ Mesh* loadMesh(const char* fileName)
 
     Mesh* mesh = malloc(sizeof(Mesh));
     meshInit(mesh);
-    mesh->cold->data = data;
-    mesh->cold->vertices = verts;
+    mesh->data = data;
+    mesh->vertices = verts;
     mesh->faces = faces;
 
     meshRecalculateBounds(mesh);
@@ -431,10 +424,3 @@ Mesh* loadMesh(const char* fileName)
 
     return mesh;
 }
-
-/*int main()
-{
-    Mesh* mesh = loadMesh("cube.obj");
-    free(mesh);
-    return 0;
-}*/
