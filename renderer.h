@@ -151,6 +151,8 @@ typedef struct ArrayMesh
 {
     int faces;
     GLuint AttribBuffer;
+    GLuint ElementBuffer;
+    GLuint VAO;
     u32 vertices;
     b32 loadedToGPU;
     r32 boundingRadius;

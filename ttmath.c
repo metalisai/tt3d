@@ -11,6 +11,16 @@ inline IVec2 ivec2(i32 x, i32 y)
     return ret;
 }
 
+inline IVec4 ivec4(i32 x, i32 y, i32 z, i32 w)
+{
+    IVec4 ret;
+    ret.x = x;
+    ret.y = y;
+    ret.z = z;
+    ret.w = w;
+    return ret;
+}
+
 inline Vec2 vec2Zero()
 {
     Vec2 vec = {0.f,0.f};
@@ -283,12 +293,22 @@ inline Plane planeFromVec4(Vec4 *v)
     return ret;
 }
 
-inline r32 min(r32 a, r32 b)
+inline r32 minf(r32 a, r32 b)
 {
     return a < b ? a : b;
 }
 
-inline r32 max(r32 a, r32 b)
+inline r32 maxf(r32 a, r32 b)
+{
+    return a > b ? a : b;
+}
+
+inline i32 min(i32 a, i32 b)
+{
+    return a < b ? a : b;
+}
+
+inline i32 max(i32 a, i32 b)
 {
     return a > b ? a : b;
 }
@@ -458,6 +478,11 @@ inline r32 floorf(r32 x)
 inline r32 powf(r32 x, r32 power)
 {
     return (r32)pow(x, power);
+}
+
+inline i32 powInt(i32 x, i32 power)
+{
+    return (i32)lround(pow(x, power));
 }
 
 inline r32 absf(r32 x)

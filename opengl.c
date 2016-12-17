@@ -3,13 +3,10 @@
 
 #include "math.h"
 
-void openglInitializeTerrainGeneration(TerrainGeneratorState* tgstate, u32 chunkXWidth, u32 chunkYWidth, u32 cubesPerSeed, r32 voxelScale)
+void openglInitializeTerrainGeneration(TerrainGeneratorState* tgstate, u32 maxGroups, u32 cubesPerSeed, r32 voxelScale)
 {
-    tgstate->chunkXWidth = chunkXWidth/cubesPerSeed;
-    tgstate->chunkYWidth = chunkYWidth/cubesPerSeed;
-    tgstate->cubesPerSeed = cubesPerSeed;
     tgstate->voxelScale = voxelScale;
-    u32 seedBufferSize = (tgstate->chunkXWidth)*(tgstate->chunkXWidth)*(tgstate->chunkYWidth)*sizeof(Vec4);
+    u32 seedBufferSize = maxGroups*maxGroups*maxGroups*sizeof(Vec4);
 
     glGenBuffers(1, &tgstate->vertInbuffer);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, tgstate->vertInbuffer);
@@ -18,7 +15,7 @@ void openglInitializeTerrainGeneration(TerrainGeneratorState* tgstate, u32 chunk
 
     tgstate->tunnelData.tunnelCount = 0;
     // DOEST WORK
-    tgstate->tunnelData.firstOctaveMax = 2.5f;
+    tgstate->tunnelData.firstOctaveMax = 4.5f;
     tgstate->tunnelData.secondOctaveMax = 20.6f;
 
     glGenBuffers(1, &tgstate->tunnelBuffer);
@@ -31,42 +28,46 @@ void openglInitializeTerrainGeneration(TerrainGeneratorState* tgstate, u32 chunk
     u32 workgourpsPerChunk = CHUNK_SIZE/CHUNK_WORKGROUP_SIZE;
     int workGroups = workgourpsPerChunk * workgourpsPerChunk * workgourpsPerChunk ;
     u32 bufferSize = workGroups*(CHUNK_WORKGROUP_SIZE+1)*(CHUNK_WORKGROUP_SIZE+1)*(CHUNK_WORKGROUP_SIZE+1)*sizeof(Vec4)*3;
+    tgstate->edgeVertexBufferSize = bufferSize;
     glBufferData(GL_SHADER_STORAGE_BUFFER, bufferSize, 0, GL_STATIC_DRAW);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
     printf("Buffer size %dMB\n",bufferSize/(u32)Megabytes(1));
 
     glGenBuffers(1, &tgstate->vertAtomicBuffer);
     glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, tgstate->vertAtomicBuffer);
-    glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(GLuint), NULL, GL_DYNAMIC_READ);
+    glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(GLuint)*2, NULL, GL_DYNAMIC_READ);
     glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, 0);
 
     tgstate->initialized = true;
 }
 
-void openglPrepageTerrainGeneration(TerrainGeneratorState* tgstate, GLuint outBuffer, Vec3 chunkOffset)
+void openglPrepageTerrainGeneration(TerrainGeneratorState* tgstate, GLuint outBuffer, GLuint outElementBuffer, u32 groups, r32 scale)
 {
     assert(tgstate->initialized);
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, outBuffer);
     // TODO: is this guaranteed to not reallocate if we always use same size even on buffer previously created?
-    glBufferData(GL_SHADER_STORAGE_BUFFER, Megabytes(6), 0, GL_DYNAMIC_COPY);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, (CHUNK_VERTEX_BUFFER_SIZE/(CHUNK_SIZE/CHUNK_WORKGROUP_SIZE))*groups, 0, GL_DYNAMIC_COPY);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-    u32 seedBufferSize = (tgstate->chunkXWidth)*tgstate->chunkXWidth*tgstate->chunkYWidth*sizeof(Vec4);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, outElementBuffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, (CHUNK_ELEMENT_BUFFER_SIZE/(CHUNK_SIZE/CHUNK_WORKGROUP_SIZE))*groups, 0, GL_DYNAMIC_COPY);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+    u32 seedBufferSize = groups*groups*groups*sizeof(Vec4);
     Vec4* seedVerts = (Vec4*)alloca(seedBufferSize);
-    r32 voxelScale = tgstate->voxelScale;
-    u32 chunksPerSeed = tgstate->cubesPerSeed;
+    r32 voxelScale = scale;
     int index = 0;
 
-    for(int k = 0; k < tgstate->chunkXWidth; k++)
+    for(int k = 0; k < groups; k++)
     {
-        for(int i = 0; i < tgstate->chunkXWidth; i++)
+        for(int i = 0; i < groups; i++)
         {
-            for(int j = 0; j < tgstate->chunkYWidth; j++)
+            for(int j = 0; j < groups; j++)
             {
 
-                seedVerts[index] = vec4(i*voxelScale*chunksPerSeed,
-                                            k*voxelScale*chunksPerSeed, j*voxelScale*chunksPerSeed, 1.0);
+                seedVerts[index] = vec4(i*voxelScale*CHUNK_WORKGROUP_SIZE,
+                                            k*voxelScale*CHUNK_WORKGROUP_SIZE, j*voxelScale*CHUNK_WORKGROUP_SIZE, 1.0);
                 index++;
             }
         }
@@ -77,13 +78,13 @@ void openglPrepageTerrainGeneration(TerrainGeneratorState* tgstate, GLuint outBu
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, seedBufferSize, (GLvoid*)seedVerts);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-    // reset atomic counter for triangles
+    // reset atomic counters
     GLuint* counter;
     glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, tgstate->vertAtomicBuffer);
-    counter = (GLuint*)glMapBufferRange(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint),
+    counter = (GLuint*)glMapBufferRange(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint)*2,
                                              GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT | GL_MAP_UNSYNCHRONIZED_BIT
                                              );
-    memset(counter, 0, sizeof(GLuint));
+    memset(counter, 0, sizeof(GLuint)*2);
     glUnmapBuffer(GL_ATOMIC_COUNTER_BUFFER);
     glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, 0);
 
@@ -250,7 +251,7 @@ void openglCreateForwardFBO(OpenglFrameBuffer *framebuffer, u32 screenW, u32 scr
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16_ARB, screenW, screenH, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32_ARB, screenW, screenH, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, NULL);
     glBindTexture(GL_TEXTURE_2D, 0);
 
     glGenFramebuffers(1, &framebuffer->fboHandle);
@@ -387,18 +388,18 @@ r32 openglGetScreenDepth(OpenglState* glstate, Vec2 screenCoord)
     u32 y = (u32)((screenCoord.y/2.0f+0.5f) * (float)glstate->screenHeight);
 
     r32 ret;
-    glBindTexture(GL_TEXTURE_2D, glstate->render_fbo.forwardFBO.depthTexture);
+    glBindFramebuffer(GL_FRAMEBUFFER, glstate->render_fbo.fboHandle);
     glReadPixels(x,y,1,1, GL_DEPTH_COMPONENT, GL_FLOAT, &ret);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     return ret;
 }
 
 r32 openglGetDepth(OpenglState* glstate, u32 x, u32 y)
 {
     r32 ret;
-    glBindTexture(GL_TEXTURE_2D, glstate->render_fbo.forwardFBO.depthTexture);
+    glBindFramebuffer(GL_FRAMEBUFFER, glstate->render_fbo.fboHandle);
     glReadPixels(x,y,1,1, GL_DEPTH_COMPONENT, GL_FLOAT, &ret);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     return ret;
 }
 
@@ -428,9 +429,9 @@ void openGLRenderCommands(OpenglState* glstate, RenderCommands *commands, u32 wi
 
     void* current = commands->pushBufferBase;
     Camera* cam = commands->camera;
-    u32 cmdcount = commands->commands;
+    //u32 cmdcount = commands->commands;
 
-    glDisable(GL_BLEND);
+    /*glDisable(GL_BLEND);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, glstate->zprepass_fbo.fboHandle);
     glClearDepth(1.0f);
     glClear(GL_DEPTH_BUFFER_BIT);
@@ -443,7 +444,7 @@ void openGLRenderCommands(OpenglState* glstate, RenderCommands *commands, u32 wi
     {
         RenderGroupEntryHeader *header = (RenderGroupEntryHeader *)current;
         current = (u8 *) current + header->size;
-        void *data = (u8 *) header + sizeof(RenderGroupEntryHeader);
+        //void *data = (u8 *) header + sizeof(RenderGroupEntryHeader);
         switch(header->type)
         {
             case RenderGroupEntryType_Mesh:
@@ -472,7 +473,7 @@ void openGLRenderCommands(OpenglState* glstate, RenderCommands *commands, u32 wi
 
     glUseProgram(0);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);*/
 
     // LIGHT CULLING
 
@@ -485,7 +486,8 @@ void openGLRenderCommands(OpenglState* glstate, RenderCommands *commands, u32 wi
 
     glActiveTexture(GL_TEXTURE4);
     glUniform1i(glstate->lightCullShader.lightc.depthMap, 4);
-    glBindTexture(GL_TEXTURE_2D, glstate->zprepass_fbo.depthFBO.depthTexture);
+    // using depth texture from last frame
+    glBindTexture(GL_TEXTURE_2D, glstate->render_fbo.forwardFBO.depthTexture);
 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, glstate->lightBuffer);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, glstate->lightIndicesBuffer);
@@ -497,7 +499,7 @@ void openGLRenderCommands(OpenglState* glstate, RenderCommands *commands, u32 wi
     // RENDER
 
     glBindFramebuffer(GL_FRAMEBUFFER, glstate->render_fbo.fboHandle);
-    glClearColor(1.0, 0.0, 0.0, 0.0);
+    glClearColor(0.0, 0.0, 0.0, 0.0);
     glClearDepth(1.0f);
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 
@@ -508,15 +510,18 @@ void openGLRenderCommands(OpenglState* glstate, RenderCommands *commands, u32 wi
     Vec4 ldir;
     if(glstate->night)
     {
-        ldir = vec4(0.0f, 0.848f, -0.53f, 0.0f);
+        ldir = vec4(0.0f,0.316f,0.9486f, 0.0f);
     }
     else
     {
-        ldir = vec4(0.0f, 0.848f, -0.53f, 0.67f);
+        ldir = vec4(0.0f,0.316f,0.9486f, 0.87f);
     }
+
+    u32 renderedEntities = 0;
 
     while(commands->commands > 0)
     {
+        renderedEntities++;
         RenderGroupEntryHeader *header = (RenderGroupEntryHeader *)current;
         current = (u8 *) current + header->size;
         void *data = (u8 *) header + sizeof(RenderGroupEntryHeader);
@@ -568,21 +573,30 @@ void openGLRenderCommands(OpenglState* glstate, RenderCommands *commands, u32 wi
                     __builtin_trap();
                 }
 
+                Mat4 mat = calculateModelMatrix(entry->transform);
+                mat4Mul(&mat, &cam->transformMatrix, &mat);
+
                 glUniformMatrix4fv(material->shader->surface.perspectiveMatrixUnif, 1, GL_FALSE, (const GLfloat*)&cam->perspectiveMatrix);
-                glUniformMatrix4fv(material->shader->surface.viewMatixUnif, 1, GL_FALSE, (const GLfloat*)&cam->transformMatrix);
+                glUniformMatrix4fv(material->shader->surface.viewMatixUnif, 1, GL_FALSE, (const GLfloat*)&mat);
                 glUniform3fv(material->shader->surface.cameraPosition, 1, (const GLfloat*) &cam->position);
                 glUniform1i(material->shader->surface.numberOfTilesX, ceil(glstate->screenWidth/(float)FPLUS_TILESIZE));
 
                 glUniform4fv(material->shader->surface.lightDirUnif, 1, (const GLfloat*)&ldir);
 
-                glBindBuffer(GL_ARRAY_BUFFER, entry->mesh->AttribBuffer);
+                /*glBindBuffer(GL_ARRAY_BUFFER, entry->mesh->AttribBuffer);
                 glEnableVertexAttribArray(0);
                 glEnableVertexAttribArray(1);
                 glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, entry->mesh->vertexStride, (void*)0);
                 glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, entry->mesh->vertexStride, (void*)16);
                 glDrawArrays(GL_TRIANGLES, 0, entry->mesh->vertices);
                 glDisableVertexAttribArray(0);
-                glDisableVertexAttribArray(1);
+                glDisableVertexAttribArray(1);*/
+
+                //printf("render terrain \n");
+
+                glBindVertexArray(entry->mesh->VAO);
+                glDrawElements(GL_TRIANGLES, entry->mesh->faces*3, GL_UNSIGNED_INT, 0);
+                glBindVertexArray(0);
 
             } break;
         default:
@@ -593,6 +607,7 @@ void openGLRenderCommands(OpenglState* glstate, RenderCommands *commands, u32 wi
 
         commands->commands--;
     }
+    //printf("entities rendered: %d\n", renderedEntities);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     glClearColor(1.0, 0.0, 0.0, 0.0);

@@ -1,12 +1,13 @@
 #version 440
 
 struct VertexOut {
-    vec4 position0;
-    vec4 normal0;
-    vec4 position1;
-    vec4 normal1;
-    vec4 position2;
-    vec4 normal2;
+    vec4 position;
+    vec4 normal;
+};
+
+struct TriangleOut
+{
+    int index[3];
 };
 
 struct Line {
@@ -27,10 +28,14 @@ struct GenData
     vec4 chunkOrigin;
 };
 
+struct GlobalVert
+{
+	vec3 coord;
+	int index;
+};
+
 struct EdgeVertices{
-	vec4 left[17][17][17][3];
-   //vec4 up[17][16][17];
-   //vec4 depth[17][17][16];
+	GlobalVert left[17][17][17][3];
 };
 
 // Shader storage buffer objects
@@ -41,6 +46,10 @@ layout(std430, binding = 0) readonly buffer InputVertexBuffer {
 layout(std430, binding = 1) writeonly buffer OutputVertexBuffer {
     VertexOut data[];
 } outputVertexBuffer;
+
+layout(std430, binding = 5) writeonly buffer OutputElementBuffer {
+    TriangleOut data[];
+} outputElementBuffer;
 
 layout(std430, binding = 2) readonly buffer TunnelData
 {
@@ -54,6 +63,7 @@ layout(std430, binding = 4) buffer EdgeVertexData
 } edgeVertexData;
 
 layout (binding = 3, offset = 0) uniform atomic_uint triangleCount;
+layout (binding = 3, offset = 4) uniform atomic_uint indexCount;
 
 // Uniforms
 uniform isampler2D mcubesLookup;
@@ -202,35 +212,42 @@ vec3 getClosestPointOnLine(vec3 a, vec3 b, vec3 from)
 
 float voxel(vec3 worldPos)
 {
-   vec3 curVec = worldPos-tunnelData.genData.chunkOrigin.xyz;
-   float progressX = curVec.x/64.0; 	// TODO: 64=chunk size
-   float progressZ = curVec.z/64.0;
-	float fom = mix(0.0,tunnelData.genData.dxgoalFirstOctaveMax,progressX) + mix(0.0,tunnelData.genData.dzgoalFirstOctaveMax,progressZ);
-   float som = mix(0.0,tunnelData.genData.dxgoalSecondOctaveMax,progressX) + mix(0.0,tunnelData.genData.dzgoalSecondOctaveMax,progressZ);
+    vec3 curVec = worldPos-tunnelData.genData.chunkOrigin.xyz;
+    float progressX = curVec.x/64.0; 	// TODO: 64=chunk size
+    float progressZ = curVec.z/64.0;
+    //float zom = mix(0.0,tunnelData.genData.dxgoalSecondOctaveMax,progressX) + mix(0.0,tunnelData.genData.dzgoalSecondOctaveMax,progressZ);
+    float fom = mix(0.0,tunnelData.genData.dxgoalFirstOctaveMax,progressX) + mix(0.0,tunnelData.genData.dzgoalFirstOctaveMax,progressZ);
+    float som = mix(0.0,tunnelData.genData.dxgoalSecondOctaveMax,progressX) + mix(0.0,tunnelData.genData.dzgoalSecondOctaveMax,progressZ);
 
-	float warp = (snoise(0.08*worldPos)+1)*0.5;
-	vec3 sampleCoord = vec3(0.5,0.9,0.68)*warp*10 + worldPos;
-	sampleCoord.y = 33.11;
+    float lacunarity = 2.0;
 
-	float h1 = (snoise(0.05*sampleCoord)+1)*(tunnelData.genData.firstOctaveMax);
-	float h2 = (snoise(0.005*sampleCoord)+1)*(tunnelData.genData.secondOctaveMax+som);
+    float warp = (snoise(0.08*worldPos)+1);
+    vec3 sampleCoord = vec3(0.2,0.9,0.48)*warp*10 + worldPos;
+    //vec3 sampleCoord = worldPos;
+    sampleCoord.y = 33.11;
 
-	float minHeight = (h1+h2) - worldPos.y ;
+    float h2noise = snoise(0.005*sampleCoord)+1;
+    float h2 = (h2noise)*(tunnelData.genData.secondOctaveMax+som);
 
-	for(int i = 0; i < tunnelData.genData.tunnelCount; i++)
-	{
-		vec3 p0 = tunnelData.tunnels[i].start.xyz;
-		vec3 p1 = tunnelData.tunnels[i].end.xyz;
-		vec3 cp = getClosestPointOnLine(p0,p1,worldPos);
-		float sphere = length(worldPos-cp);
-		if(sphere < 5.0)
-			return (-5.0+sphere)*10.0;
-	}
+    float h0 = h2noise*0.5*((snoise(0.005*pow(lacunarity,4.0)*sampleCoord)+1)*(1.0));
+    float h1 = h2noise*0.5*((snoise(0.0005*pow(lacunarity,2.0)*sampleCoord)+1)*(tunnelData.genData.firstOctaveMax+fom));
 
-	return minHeight;
+    float minHeight = (h0+h1+h2) - worldPos.y ;
+
+    for(int i = 0; i < tunnelData.genData.tunnelCount; i++)
+    {
+        vec3 p0 = tunnelData.tunnels[i].start.xyz;
+        vec3 p1 = tunnelData.tunnels[i].end.xyz;
+        vec3 cp = getClosestPointOnLine(p0,p1,worldPos);
+        float sphere = length(worldPos-cp);
+        if(sphere < 5.0)
+            return (-5.0+sphere)*10.0;
+    }
+
+    return minHeight;
 }
 
-void vMarchCube1(int i, int j, int k, vec3 wcoord, uint index)
+void vMarchCube1(int i, int j, int k, uint index)
 {	
     int iterate, iFlagIndex;
     vec4 afCubeValuev[2];
@@ -258,22 +275,45 @@ void vMarchCube1(int i, int j, int k, vec3 wcoord, uint index)
 
         if(edgeConnection[0] > -1)
         {
-            uint triangleIndex = atomicCounterIncrement(triangleCount);
+            uint indexIndex = atomicCounterIncrement(indexCount);
 
-            ivec4 indexOffset = edgeVertexOffset[edgeConnection[0]];
-            outputVertexBuffer.data[triangleIndex].position0 = edgeVertexData.data[index].left[i+indexOffset.x][j+indexOffset.y][k+indexOffset.z][indexOffset.w];
+            // calculate vertex positions and normal of the triangle
+            vec3 verts[3];
+            for(int curVert = 0; curVert < 3; curVert++)
+            {
+                ivec4 indexOffset = edgeVertexOffset[edgeConnection[curVert]];
+                verts[curVert] = edgeVertexData.data[index].left[i+indexOffset.x][j+indexOffset.y][k+indexOffset.z][indexOffset.w].coord;
+            }
+            vec3 normal = normalize(cross(verts[1].xyz -verts[0].xyz, verts[2].xyz - verts[0].xyz));
 
-            indexOffset = edgeVertexOffset[edgeConnection[1]];
-            outputVertexBuffer.data[triangleIndex].position1 = edgeVertexData.data[index].left[i+indexOffset.x][j+indexOffset.y][k+indexOffset.z][indexOffset.w];
-
-            indexOffset = edgeVertexOffset[edgeConnection[2]];
-            outputVertexBuffer.data[triangleIndex].position2 = edgeVertexData.data[index].left[i+indexOffset.x][j+indexOffset.y][k+indexOffset.z][indexOffset.w];
-
-            vec3 normal = normalize(cross(outputVertexBuffer.data[triangleIndex].position1.xyz - outputVertexBuffer.data[triangleIndex].position0.xyz, outputVertexBuffer.data[triangleIndex].position2.xyz - outputVertexBuffer.data[triangleIndex].position0.xyz));
-
-            outputVertexBuffer.data[triangleIndex].normal0 = vec4(normal,0.0);
-            outputVertexBuffer.data[triangleIndex].normal1 = vec4(normal,0.0);
-            outputVertexBuffer.data[triangleIndex].normal2 = vec4(normal,0.0);
+            // add missing vertices and indices
+            for(int curVert = 0; curVert < 3; curVert++)
+            {
+                ivec4 indexOffset = edgeVertexOffset[edgeConnection[curVert]];
+                int res = -2;
+                do
+                {
+                    res = atomicCompSwap(edgeVertexData.data[index].left[i+indexOffset.x][j+indexOffset.y][k+indexOffset.z][indexOffset.w].index, -1, -2);
+                    if(res == -1) // new vertex
+                    {
+                        // create new vertex
+                        uint vertexIndex = atomicCounterIncrement(triangleCount);
+                        // write new vertex index so others can read it
+                        atomicExchange(edgeVertexData.data[index].left[i+indexOffset.x][j+indexOffset.y][k+indexOffset.z][indexOffset.w].index, int(vertexIndex));                      
+                        outputVertexBuffer.data[vertexIndex].position = vec4(verts[curVert], 1.0);
+                        outputVertexBuffer.data[vertexIndex].normal = vec4(normal,1.0);
+                        // add new index
+                        outputElementBuffer.data[indexIndex].index[curVert] = int(vertexIndex);
+                    }
+                    else if(res != -2)	// some other thread already created this vertex, just use the stored value
+                    {
+                        // add new index
+                        outputElementBuffer.data[indexIndex].index[curVert] = res;
+                        // TODO: atomic?
+                        outputVertexBuffer.data[res].normal += vec4(normal,1.0);
+                    }
+                } while (res == -2);		
+            }
         }
     }
 }
@@ -288,8 +328,9 @@ void main() {
 
 	 // take all the samples we will need
     for(int i = 0; i < 17; i++) {
-    	  vec3 worldPosition = inputVertexBuffer.data[index].xyz + vec3(itemID.x*voxelScale,itemID.y*voxelScale,i*voxelScale);
-        cubeValues[itemID.x][itemID.y][i] = voxel(worldPosition+worldOffset);
+        int zv = i;
+        vec3 worldPosition = inputVertexBuffer.data[index].xyz + vec3(itemID.x*voxelScale,itemID.y*voxelScale,i*voxelScale);
+        cubeValues[itemID.x][itemID.y][zv] = voxel(worldPosition+worldOffset);
     }
 
 	 int dummy = 3; // i don't understand the dynamically uniform expression thing, so I use these
@@ -297,20 +338,25 @@ void main() {
     barrier();
 
 	 // calculate all possible vertex positions
-	 for(int i = 0; i < 17; i++) {
-    	  vec3 worldPosition = inputVertexBuffer.data[index].xyz + vec3(itemID.x*voxelScale,itemID.y*voxelScale,i*voxelScale) + worldOffset;
+    for(int i = 0; i < 17; i++) {
+        int zv = i;
 
-	     float fOffset = getOffset(cubeValues[itemID.x][itemID.y][i], cubeValues[itemID.x+1][itemID.y][i]);
-	     edgeVertexData.data[index].left[itemID.x][itemID.y][i][0] = vec4(worldPosition,1.0) + vec4(fOffset*vec3(1.0,0.0,0.0),0.0);
+        vec3 worldPosition = inputVertexBuffer.data[index].xyz + vec3(itemID.x*voxelScale,itemID.y*voxelScale,zv*voxelScale)/* + worldOffset*/;
 
-	     fOffset = getOffset(cubeValues[itemID.x][itemID.y][i], cubeValues[itemID.x][itemID.y+1][i]);
-	     edgeVertexData.data[index].left[itemID.x][itemID.y][i][1] = vec4(worldPosition,1.0) + vec4(fOffset*vec3(0.0,1.0,0.0),0.0);
+        float fOffset = getOffset(cubeValues[itemID.x][itemID.y][zv], cubeValues[itemID.x+1][itemID.y][zv]);
+        edgeVertexData.data[index].left[itemID.x][itemID.y][zv][0].coord = worldPosition + fOffset*vec3(voxelScale,0.0,0.0);
+        edgeVertexData.data[index].left[itemID.x][itemID.y][zv][0].index = -1;
 
-	     fOffset = getOffset(cubeValues[itemID.x][itemID.y][i], cubeValues[itemID.x][itemID.y][i+1]);
-	     edgeVertexData.data[index].left[itemID.x][itemID.y][i][2] = vec4(worldPosition,1.0) + vec4(fOffset*vec3(0.0,0.0,1.0),0.0);
+        fOffset = getOffset(cubeValues[itemID.x][itemID.y][zv], cubeValues[itemID.x][itemID.y+1][zv]);
+        edgeVertexData.data[index].left[itemID.x][itemID.y][zv][1].coord = worldPosition + fOffset*vec3(0.0,voxelScale,0.0);
+        edgeVertexData.data[index].left[itemID.x][itemID.y][zv][1].index = -1;
+
+        fOffset = getOffset(cubeValues[itemID.x][itemID.y][zv], cubeValues[itemID.x][itemID.y][zv+1]);
+        edgeVertexData.data[index].left[itemID.x][itemID.y][zv][2].coord = worldPosition + fOffset*vec3(0.0,0.0,voxelScale);
+        edgeVertexData.data[index].left[itemID.x][itemID.y][zv][2].index = -1;
     }
 
-	 dummy = 4;
+	dummy = 4;
     dummy;
     barrier();
 
@@ -319,10 +365,7 @@ void main() {
 
 	 for(int i = 0; i < 16; i++)
 	 {
-	    vec3 coord = vec3(inputVertexBuffer.data[index].x + ((itemID.x)*voxelScale),
-	                       inputVertexBuffer.data[index].y + ((itemID.y)*voxelScale),
-	                       inputVertexBuffer.data[index].z + (i*voxelScale)) + worldOffset;
-    	 vMarchCube1(itemID.x, itemID.y, i, coord, index);
+    	 vMarchCube1(itemID.x, itemID.y, i, index);
 	 }
 
 }

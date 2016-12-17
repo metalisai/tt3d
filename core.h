@@ -6,7 +6,12 @@
 
 #define CHUNK_SIZE 64
 #define CHUNK_WORKGROUP_SIZE 16
-#define MAX_LOADED_CHUNKS 32
+#define MAX_LOD_3_LOADED_CHUNKS 64
+#define MAX_LOD_2_LOADED_CHUNKS 128
+#define MAX_LOD_1_LOADED_CHUNKS 1024
+
+#define CHUNK_VERTEX_BUFFER_SIZE Megabytes(1)
+#define CHUNK_ELEMENT_BUFFER_SIZE Kilobytes(500)
 
 typedef struct TerrainChunk
 {
@@ -14,6 +19,7 @@ typedef struct TerrainChunk
     IVec3 chunkCoordinate;
     b32 isAllocate;
     Entity entity;
+    u32 LODLevel;
 } TerrainChunk;
 
 typedef struct Game_State
@@ -38,8 +44,9 @@ typedef struct Game_State
     Entity voxelTerrain[100];
     Entity dome;
 
-    TerrainChunk loadedChunks[MAX_LOADED_CHUNKS];
-    u32 loadedChunkCount;
+    TerrainChunk loadedChunks[MAX_LOD_3_LOADED_CHUNKS+MAX_LOD_2_LOADED_CHUNKS+MAX_LOD_1_LOADED_CHUNKS];
+    u32 loadedChunkCount[4];
+    u32 totalLoadedChunkCount;
 
     u32 voxelTerrainCount;
 
@@ -102,8 +109,8 @@ typedef struct PointLight {
 inline void addEntity(Permanent_Storage *state, Entity *ent);
 static inline void addSurfaceShader(Permanent_Storage *state, Shader *shader);
 
-void loadChunkVertices(Permanent_Storage* state, Vec3 origin, ArrayMesh* mesh);
-TerrainChunk loadChunk(Permanent_Storage* state, IVec3 chunkId);
+void reloadChunk(Permanent_Storage* state, Vec3 origin, TerrainChunk* entity, u32 lodLevel);
+TerrainChunk loadChunk(Permanent_Storage* state, IVec3 chunkId, u32 lodLevel);
 
 #ifdef __cplusplus
 extern "C" {

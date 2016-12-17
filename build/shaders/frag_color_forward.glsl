@@ -47,8 +47,14 @@ vec3 calculatePointLight(vec3 lightPos, vec4 lightColor, vec3 viewDir, float lig
 void main()
 {
 	float dotup = dot(theNormal,vec3(0.0f,1.0f,0.0f));
-   dotup*=dotup;
-	vec3 color = mix(vec3(0.7,0.7,0.7),vec3(0.4,0.7,0.1),dotup);	
+	//dotup = smoothstep(0.89, 0.9, dotup);
+   	dotup*=dotup;
+	vec3 color;
+	if(thePos.y < 30.0)
+		color = mix(vec3(0.4,0.7,0.1), vec3(0.2,0.2,0.07), smoothstep(0,30.0,thePos.y));
+	else	
+		color = mix(vec3(0.2,0.2,0.07), vec3(0.25,0.25,0.25), smoothstep(30.0,50.0,thePos.y));
+	color = mix(vec3(0.25,0.25,0.25),color,dotup);
 
    float lighting = 1.0;
 
@@ -74,10 +80,11 @@ void main()
 
 	// DIRECTIONAL LIGHT
 	vec3 halfwayDir = normalize(lightDir.xyz + viewDir);
-	float spec = pow(max(dot(theNormal, halfwayDir), 0.0), 32.0);	
+	//float spec = pow(max(dot(theNormal, halfwayDir), 0.0), 32.0);	
+	float spec = 0.0;
 	gl_FragColor.rgb += lightDir.w * color * clamp(dot(lightDir.xyz, theNormal) + spec, 0.0, 1.0);
 
-	gl_FragColor.rgb += 0.15*color; // ambient
+	gl_FragColor.rgb += 0.25*color; // ambient
 
 	gl_FragColor.a = 1.0;
 }

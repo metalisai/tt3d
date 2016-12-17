@@ -87,9 +87,7 @@ typedef struct TerrainGeneratorState
     GLuint vertAtomicBuffer;
     GLuint tunnelBuffer;
     GLuint edgeVertexBuffer;
-    u32 chunkXWidth;
-    u32 chunkYWidth;
-    u32 cubesPerSeed;
+    u32 edgeVertexBufferSize;
     r32 voxelScale;
     b32 initialized;
 } TerrainGeneratorState;
@@ -113,7 +111,7 @@ Mesh *loadMesh(const char* fileName);
 Mesh *generateTerrainMesh();
 Mesh *terrainGen(r32 y);
 
-void openglInitializeTerrainGeneration(TerrainGeneratorState* tgstate, u32 chunkXWidth, u32 chunkYWidth, u32 cubesPerSeed, r32 voxelScale);
-void openglPrepageTerrainGeneration(TerrainGeneratorState* tgstate, GLuint outBuffer, Vec3 chunkOffset);
+void openglInitializeTerrainGeneration(TerrainGeneratorState* tgstate, u32 maxGroups, u32 cubesPerSeed, r32 voxelScale);
+void openglPrepageTerrainGeneration(TerrainGeneratorState* tgstate, GLuint outBuffer, GLuint outElementBuffer, u32 groups, r32 scale);
 
 #endif // ENGINE_H

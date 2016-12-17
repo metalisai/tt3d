@@ -15,4 +15,5 @@ void main (void)
 					 (1.0f + cos*cos) / pow(1.0f + g2 - 2.0f * g * cos, 1.5f);
 	gl_FragColor.rgb = rayleighPhase*RayleighColor + miePhase*MieColor;
 	gl_FragColor.a = 1.0;
+	gl_FragDepth = 1.0;
 }

@@ -1,9 +1,8 @@
 *.log
 *.so
 *.o
-*.glsl~
-*.cl~
-*.h~
-*.c~
+*~
 *.cpp~
+*.out
+*.swp
 

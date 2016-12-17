@@ -115,6 +115,14 @@ typedef struct Vec3
     r32 z;
 } Vec3;
 
+typedef struct IVec4
+{
+    i32 x;
+    i32 y;
+    i32 z;
+    i32 w;
+} IVec4;
+
 typedef struct Vec4
 {
     r32 x;
@@ -189,8 +197,10 @@ void createArena(MemoryArena *stack, void* start, u64 size);
 int charToKeycode(char ch);
 
 Quaternion conjugate(Quaternion q);
-r32 min(r32 a, r32 b);
-r32 max(r32 a, r32 b);
+r32 minf(r32 a, r32 b);
+r32 maxf(r32 a, r32 b);
+i32 min(i32 a, i32 b);
+i32 max(i32 a, i32 b);
 Mat4 projMatrix(float fov, float aspect, float zNear, float zFar);
 Mat4 ortho(r32 left, r32 right, r32 bottom, r32 top, r32 near, r32 far);
 Mat4 invPerspective(Mat4 *perspectiveMat);
@@ -199,6 +209,7 @@ Mat4 translate(Vec3 pos);
 void getFrustumPlanes(Mat4 *projectionMatrix, Plane* planeArray);
 
 IVec2 ivec2(i32 x, i32 y);
+IVec4 ivec4(i32 x, i32 y, i32 z, i32 w);
 Vec2 vec2(r32 x, r32 y);
 Vec3 vec3(r32 x, r32 y, r32 z);
 Vec3 vec3FromVec4(Vec4 v);
@@ -239,6 +250,8 @@ Vec3 vec3Normalized(Vec3 *v);
 r32 vec3Mag(Vec3 *v);
 r32 vec3Mag2(Vec3 *v);
 r32 clamp01(r32 v);
+
+i32 powInt(i32 x, i32 power);
 
 Plane planeFromVec4(Vec4 *v);
 r32 floorf(r32 x);

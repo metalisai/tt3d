@@ -1,530 +1,388 @@
-//
-// Marching Cubes Example Program
-// by Cory Bloyd (corysama@yahoo.com)
-//
-// A simple, portable and complete implementation of the Marching Cubes
-// and Marching Tetrahedrons algorithms in a single source file.
-// There are many ways that this code could be made faster, but the
-// intent is for the code to be easy to understand.
-//
-// For a description of the algorithm go to
-// http://astronomy.swin.edu.au/pbourke/modelling/polygonise/
-//
-// This code is public domain.
-//
+#include "shared.h"
 
-#include "stdio.h"
-#include "math.h"
-//This program requires the OpenGL and GLUT libraries
-// You can obtain them for free from http://www.opengl.org
-#define STB_PERLIN_IMPLEMENTATION
-#include "lib/stb_perlin.h"
-#include "engine.h"
-
-struct GLvector
-{
-        GLfloat fX;
-        GLfloat fY;
-        GLfloat fZ;
+struct VertexOut {
+    Vec4 position;
+    Vec4 normal;
 };
 
-//These tables are used so that everything can be done in little loops that you can look at all at once
-// rather than in pages and pages of unrolled code.
-
-//a2fVertexOffset lists the positions, relative to vertex0, of each of the 8 vertices of a cube
-static const GLfloat a2fVertexOffset[8][3] =
+struct TriangleOut
 {
-    {0.0, 0.0, 0.0},{1.0, 0.0, 0.0},{1.0, 1.0, 0.0},{0.0, 1.0, 0.0},
-    {0.0, 0.0, 1.0},{1.0, 0.0, 1.0},{1.0, 1.0, 1.0},{0.0, 1.0, 1.0}
+    i32 index[3];
 };
 
-//a2iEdgeConnection lists the index of the endpoint vertices for each of the 12 edges of the cube
-static const GLint a2iEdgeConnection[12][2] =
-{
-    {0,1}, {1,2}, {2,3}, {3,0},
-    {4,5}, {5,6}, {6,7}, {7,4},
-    {0,4}, {1,5}, {2,6}, {3,7}
+struct Line {
+    Vec4 start;
+    Vec4 end;
 };
 
-//a2fEdgeDirection lists the direction vector (vertex1-vertex0) for each edge in the cube
-static const GLfloat a2fEdgeDirection[12][3] =
+struct GenData
 {
-    {1.0, 0.0, 0.0},{0.0, 1.0, 0.0},{-1.0, 0.0, 0.0},{0.0, -1.0, 0.0},
-    {1.0, 0.0, 0.0},{0.0, 1.0, 0.0},{-1.0, 0.0, 0.0},{0.0, -1.0, 0.0},
-    {0.0, 0.0, 1.0},{0.0, 0.0, 1.0},{ 0.0, 0.0, 1.0},{0.0,  0.0, 1.0}
+    uint tunnelCount;
+    float firstOctaveMax;
+    float secondOctaveMax;
+    float padding;
+    float dxgoalFirstOctaveMax;
+    float dxgoalSecondOctaveMax;
+    float dzgoalFirstOctaveMax;
+    float dzgoalSecondOctaveMax;
+    Vec4 chunkOrigin;
+} GenData;
+
+struct GlobalVert
+{
+    Vec3 coord;
+    int index;
+} GlobalVert;
+
+struct EdgeVertices{
+    struct GlobalVert left[17][17][17][3];
+} EdgeVertices;
+
+// Shader storage buffer objects
+/*layout(std430, binding = 0) readonly buffer InputVertexBuffer {
+    vec4 data[];
+} inputVertexBuffer;
+
+layout(std430, binding = 1) writeonly buffer OutputVertexBuffer {
+    VertexOut data[];
+} outputVertexBuffer;
+
+layout(std430, binding = 5) writeonly buffer OutputElementBuffer {
+    TriangleOut data[];
+} outputElementBuffer;
+
+layout(std430, binding = 2) readonly buffer TunnelData
+{
+    GenData genData;
+    Line tunnels[];
+} tunnelData;
+
+layout(std430, binding = 4) buffer EdgeVertexData
+{
+    EdgeVertices data[];
+} edgeVertexData;
+
+layout (binding = 3, offset = 0) uniform atomic_uint triangleCount;
+layout (binding = 3, offset = 4) uniform atomic_uint indexCount;*/
+
+// Uniforms
+i32 mcubesLookup[256][16];
+//uniform isampler1D mcubesLookup2;
+Vec3 worldOffset;
+r32 voxelScale;
+
+// Shared values between all the threads in the group
+r32 cubeValues[18][18][18]; // the actual used size is 17, but using 18 saves 3 overflow checks
+
+const IVec4 edgeVertexOffset[12] =
+{
+    {0, 0, 0, 0}, // 0
+    {1, 0, 0, 1},
+    {0, 1, 0, 0},
+    {0, 0, 0, 1},
+    {0, 0, 1, 0}, // 4
+    {1, 0, 1, 1},
+    {0, 1, 1, 0},
+    {0, 0, 1, 1},
+    {0, 0, 0, 2}, // 8
+    {1, 0, 0, 2},
+    {1, 1, 0, 2},
+    {0, 1, 0, 2} // 11
 };
 
+Vec3 vec3Mod289(Vec3 x) {
+    Vec3 ret = x;
+    ret.x -= floorf(x.x * (1.0f / 289.0f)) * 289.0f;
+    ret.y -= floorf(x.y * (1.0f / 289.0f)) * 289.0f;
+    ret.z -= floorf(x.z * (1.0f / 289.0f)) * 289.0f;
+    return ret;
+}
 
-GLenum    ePolygonMode = GL_FILL;
-GLint     iDataSetSize = 16;
-GLfloat   fStepSize = 1.0/16;
-GLfloat   fTargetValue = 48.0;
-GLfloat   fTime = 0.0;
-struct GLvector  sSourcePoint[3];
-GLboolean bSpin = true;
-GLboolean bMove = true;
-GLboolean bLight = true;
+Vec4 vec4Mod289(Vec4 x) {
+    Vec4 ret = x;
+    ret.x -= floorf(x.x * (1.0f / 289.0f)) * 289.0f;
+    ret.y -= floorf(x.y * (1.0f / 289.0f)) * 289.0f;
+    ret.z -= floorf(x.z * (1.0f / 289.0f)) * 289.0f;
+    ret.w -= floorf(x.w * (1.0f / 289.0f)) * 289.0f;
+    return ret;
+}
 
+Vec4 permute(Vec4 x) {
+    Vec4 ret;
+    ret.x = ((x.x*34.0f)+1.0f)*x.x;
+    ret.y = ((x.y*34.0f)+1.0f)*x.y;
+    ret.z = ((x.z*34.0f)+1.0f)*x.z;
+    ret.w = ((x.w*34.0f)+1.0f)*x.w;
+    return vec4Mod289(ret);
+}
 
-void vIdle();
-void vDrawScene();
-void vResize(GLsizei, GLsizei);
-void vKeyboard(unsigned char cKey, int iX, int iY);
-void vSpecial(int iKey, int iX, int iY);
-
-GLvoid vPrintHelp();
-GLvoid vSetTime(GLfloat fTime);
-GLfloat fSample1(GLfloat fX, GLfloat fY, GLfloat fZ);
-GLfloat fSample2(GLfloat fX, GLfloat fY, GLfloat fZ);
-GLfloat fSample3(GLfloat fX, GLfloat fY, GLfloat fZ);
-GLfloat (*fSample)(GLfloat fX, GLfloat fY, GLfloat fZ) = fSample1;
-
-GLvoid vMarchingCubes();
-//GLvoid vMarchCube1(GLfloat fX, GLfloat fY, GLfloat fZ, GLfloat fScale);
-GLvoid vMarchCube2(GLfloat fX, GLfloat fY, GLfloat fZ, GLfloat fScale);
-//GLvoid (*vMarchCube)(GLfloat fX, GLfloat fY, GLfloat fZ, GLfloat fScale) = vMarchCube1;
-
-//fGetOffset finds the approximate point of intersection of the surface
-// between two points with the values fValue1 and fValue2
-GLfloat fGetOffset(GLfloat fValue1, GLfloat fValue2, GLfloat fValueDesired)
+Vec4 taylorInvSqrt(Vec4 r)
 {
-    return 0.5f;
-        /*GLdouble fDelta = fValue2 - fValue1;
+    Vec4 ret;
+    ret.x = 1.79284291400159f - 0.85373472095314f * r.x;
+    ret.y = 1.79284291400159f - 0.85373472095314f * r.y;
+    ret.z = 1.79284291400159f - 0.85373472095314f * r.z;
+    ret.w = 1.79284291400159f - 0.85373472095314f * r.w;
+    return ret;
+}
 
-        if(fDelta == 0.0)
+/*r32 snoise(Vec3 v)
+{
+    const Vec2  C = vec2(1.0f/6.0f, 1.0f/3.0f) ;
+    const Vec4  D = vec4(0.0f, 0.5f, 1.0f, 2.0f);
+
+    // First corner
+    Vec3 i  = floor(v + dot(v, C.yyy) );
+    Vec3 x0 =   v - i + dot(i, C.xxx) ;
+
+    // Other corners
+    Vec3 g = step(x0.yzx, x0.xyz);
+    Vec3 l = 1.0 - g;
+    Vec3 i1 = min( g.xyz, l.zxy );
+    Vec3 i2 = max( g.xyz, l.zxy );
+
+    //   x0 = x0 - 0.0 + 0.0 * C.xxx;
+    //   x1 = x0 - i1  + 1.0 * C.xxx;
+    //   x2 = x0 - i2  + 2.0 * C.xxx;
+    //   x3 = x0 - 1.0 + 3.0 * C.xxx;
+    Vec3 x1 = x0 - i1 + C.xxx;
+    Vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y
+    Vec3 x3 = x0 - D.yyy;      // -1.0+3.0*C.x = -0.5 = -D.y
+
+    // Permutations
+    i = mod289(i);
+    Vec4 p = permute( permute( permute(
+                                   i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                               + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
+                      + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+
+    // Gradients: 7x7 points over a square, mapped onto an octahedron.
+    // The ring size 17*17 = 289 is close to a multiple of 49 (49*6 = 294)
+    float n_ = 0.142857142857; // 1.0/7.0
+    Vec3  ns = n_ * D.wyz - D.xzx;
+
+    Vec4 j = p - 49.0 * floor(p * ns.z * ns.z);  //  mod(p,7*7)
+
+    Vec4 x_ = floor(j * ns.z);
+    Vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
+
+    Vec4 x = x_ *ns.x + ns.yyyy;
+    Vec4 y = y_ *ns.x + ns.yyyy;
+    Vec4 h = 1.0 - abs(x) - abs(y);
+
+    Vec4 b0 = vec4( x.xy, y.xy );
+    Vec4 b1 = vec4( x.zw, y.zw );
+
+    //vec4 s0 = vec4(lessThan(b0,0.0))*2.0 - 1.0;
+    //vec4 s1 = vec4(lessThan(b1,0.0))*2.0 - 1.0;
+    Vec4 s0 = floor(b0)*2.0 + 1.0;
+    Vec4 s1 = floor(b1)*2.0 + 1.0;
+    Vec4 sh = -step(h, vec4(0.0));
+
+    Vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+    Vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+
+    Vec3 p0 = vec3(a0.xy,h.x);
+    Vec3 p1 = vec3(a0.zw,h.y);
+    Vec3 p2 = vec3(a1.xy,h.z);
+    Vec3 p3 = vec3(a1.zw,h.w);
+
+    //Normalise gradients
+    Vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+    p0 *= norm.x;
+    p1 *= norm.y;
+    p2 *= norm.z;
+    p3 *= norm.w;
+
+    // Mix final noise value
+    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+    m = m * m;
+    return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),
+                                  dot(p2,x2), dot(p3,x3) ) );
+}
+
+float getOffset(float v1, float v2)
+{
+    float delta = v1 - v2;
+    if(delta == 0.0)
+        return 0.5;
+    return v1/delta;
+}
+
+Vec4 getOffsetv(Vec4 v1, Vec4 v2)
+{
+    Vec4 delta = v1 - v2;
+    Vec4 eq = vec4(equal(delta,vec4(0.0)));
+    Vec4 neq = vec4(notEqual(delta,vec4(0.0)));
+     return eq*vec4(0.5)+neq*(v1/delta); // TODO: division by 0 can happen
+}
+
+Vec3 getClosestPointOnLine(Vec3 a, Vec3 b, Vec3 from)
+{
+    Vec3 atob = b-a;
+    from = from-a;
+    float atob2 = dot(atob,atob); // squared length
+    float atopDotAtob = dot(from, atob);
+    float t = atopDotAtob / atob2;
+    t = clamp(t,0.0,1.0);
+    atob *= t;
+    return a+atob;
+}
+
+float voxel(vec3 worldPos)
+{
+   Vec3 curVec = worldPos-tunnelData.genData.chunkOrigin.xyz;
+   float progressX = curVec.x/64.0; 	// TODO: 64=chunk size
+   float progressZ = curVec.z/64.0;
+   float fom = mix(0.0,tunnelData.genData.dxgoalFirstOctaveMax,progressX) + mix(0.0,tunnelData.genData.dzgoalFirstOctaveMax,progressZ);
+   float som = mix(0.0,tunnelData.genData.dxgoalSecondOctaveMax,progressX) + mix(0.0,tunnelData.genData.dzgoalSecondOctaveMax,progressZ);
+
+    float warp = (snoise(0.08*worldPos)+1)*0.5;
+    Vec3 sampleCoord = vec3(0.5,0.9,0.68)*warp*10 + worldPos;
+    sampleCoord.y = 33.11;
+
+    float h1 = (snoise(0.05*sampleCoord)+1)*(tunnelData.genData.firstOctaveMax);
+    float h2 = (snoise(0.005*sampleCoord)+1)*(tunnelData.genData.secondOctaveMax+som);
+
+    float minHeight = (h1+h2) - worldPos.y ;
+
+    for(int i = 0; i < tunnelData.genData.tunnelCount; i++)
+    {
+        vec3 p0 = tunnelData.tunnels[i].start.xyz;
+        vec3 p1 = tunnelData.tunnels[i].end.xyz;
+        vec3 cp = getClosestPointOnLine(p0,p1,worldPos);
+        float sphere = length(worldPos-cp);
+        if(sphere < 5.0)
+            return (-5.0+sphere)*10.0;
+    }
+
+    return minHeight;
+}
+
+void vMarchCube1(int i, int j, int k, vec3 wcoord, uint index)
+{
+    i32 iterate, iFlagIndex;
+    Vec4 afCubeValuev[2];
+
+    afCubeValuev[0].x = cubeValues[i][j][k];
+    afCubeValuev[0].y = cubeValues[i+1][j][k];
+    afCubeValuev[0].z = cubeValues[i+1][j+1][k];
+    afCubeValuev[0].w = cubeValues[i][j+1][k];
+    afCubeValuev[1].x = cubeValues[i][j][k+1];
+    afCubeValuev[1].y = cubeValues[i+1][j][k+1];
+    afCubeValuev[1].z = cubeValues[i+1][j+1][k+1];
+    afCubeValuev[1].w = cubeValues[i][j+1][k+1];
+
+     // I heard GPU likes vectors...
+    iFlagIndex = int(dot(ivec4(1, 2, 4, 8)*ivec4(step(afCubeValuev[0],vec4(0.0))),ivec4(1)) +
+        dot(ivec4(16, 32, 64, 128)*ivec4(step(afCubeValuev[1],vec4(0.0))),ivec4(1)) + vec4(0.1));
+
+     int edgeConnection[3];
+
+    for(iterate = 0; iterate < 5; iterate++)
+    {
+          edgeConnection[0] = texelFetch2D(mcubesLookup, ivec2(3*iterate, iFlagIndex), 0).a;
+          edgeConnection[1] = texelFetch2D(mcubesLookup, ivec2(3*iterate+1, iFlagIndex), 0).a;
+          edgeConnection[2] = texelFetch2D(mcubesLookup, ivec2(3*iterate+2, iFlagIndex), 0).a;
+
+        if(edgeConnection[0] > -1)
         {
-                return 0.5;
+            uint indexIndex = atomicCounterIncrement(indexCount);
+
+            // calculate vertex positions and normal of the triangle
+            Vec3 verts[3];
+            for(int curVert = 0; curVert < 3; curVert++)
+            {
+                ivec4 indexOffset = edgeVertexOffset[edgeConnection[curVert]];
+                verts[curVert] = edgeVertexData.data[index].left[i+indexOffset.x][j+indexOffset.y][k+indexOffset.z][indexOffset.w].coord;
+            }
+            Vec3 normal = normalize(cross(verts[1].xyz -verts[0].xyz, verts[2].xyz - verts[0].xyz));
+
+            // add missing vertices and indices
+            for(int curVert = 0; curVert < 3; curVert++)
+            {
+                ivec4 indexOffset = edgeVertexOffset[edgeConnection[curVert]];
+                int res = -2;
+                do
+                {
+                    res = atomicCompSwap(edgeVertexData.data[index].left[i+indexOffset.x][j+indexOffset.y][k+indexOffset.z][indexOffset.w].index, -1, -2);
+                    if(res == -1) // new vertex
+                    {
+                        // create new vertex
+                        uint vertexIndex = atomicCounterIncrement(triangleCount);
+                        // write new vertex index so others can read it
+                        atomicExchange(edgeVertexData.data[index].left[i+indexOffset.x][j+indexOffset.y][k+indexOffset.z][indexOffset.w].index, int(vertexIndex));
+                        outputVertexBuffer.data[vertexIndex].position = vec4(verts[curVert], 1.0);
+                        outputVertexBuffer.data[vertexIndex].normal = vec4(normal,1.0);
+                        // add new index
+                        outputElementBuffer.data[indexIndex].index[curVert] = int(vertexIndex);
+                    }
+                    else if(res != -2)	// some other thread already created this vertex, just use the stored value
+                    {
+                        // add new index
+                        outputElementBuffer.data[indexIndex].index[curVert] = res;
+                        // TODO: atomic?
+                        outputVertexBuffer.data[res].normal += vec4(normal,1.0);
+                    }
+                } while (res == -2);
+            }
         }
-        return (fValueDesired - fValue1)/fDelta;*/
-}
-
-
-//vGetColor generates a color from a given position and normal of a point
-/*GLvoid vGetColor(GLvector &rfColor, GLvector &rfPosition, GLvector &rfNormal)
-{
-        GLfloat fX = rfNormal.fX;
-        GLfloat fY = rfNormal.fY;
-        GLfloat fZ = rfNormal.fZ;
-        rfColor.fX = (fX > 0.0 ? fX : 0.0) + (fY < 0.0 ? -0.5*fY : 0.0) + (fZ < 0.0 ? -0.5*fZ : 0.0);
-        rfColor.fY = (fY > 0.0 ? fY : 0.0) + (fZ < 0.0 ? -0.5*fZ : 0.0) + (fX < 0.0 ? -0.5*fX : 0.0);
-        rfColor.fZ = (fZ > 0.0 ? fZ : 0.0) + (fX < 0.0 ? -0.5*fX : 0.0) + (fY < 0.0 ? -0.5*fY : 0.0);
-}*/
-
-GLvoid vNormalizeVector(struct GLvector *rfVectorResult, struct GLvector *rfVectorSource)
-{
-    GLfloat fOldLength;
-    GLfloat fScale;
-
-    fOldLength = sqrtf( (rfVectorSource->fX * rfVectorSource->fX) +
-                        (rfVectorSource->fY * rfVectorSource->fY) +
-                        (rfVectorSource->fZ * rfVectorSource->fZ) );
-
-    if(fOldLength == 0.0)
-    {
-        rfVectorResult->fX = rfVectorSource->fX;
-        rfVectorResult->fY = rfVectorSource->fY;
-        rfVectorResult->fZ = rfVectorSource->fZ;
-    }
-    else
-    {
-        fScale = 1.0/fOldLength;
-        rfVectorResult->fX = rfVectorSource->fX*fScale;
-        rfVectorResult->fY = rfVectorSource->fY*fScale;
-        rfVectorResult->fZ = rfVectorSource->fZ*fScale;
     }
 }
 
+// cant use 17 17 17 because "local work size runs out of limitaion"
+layout(local_size_x = 17, local_size_y = 17, local_size_z = 1) in;
+void main() {
+    ivec2 location = ivec2(gl_WorkGroupID.xy);
+    ivec2 itemID = ivec2(gl_LocalInvocationID.xy);
+    ivec2 tileNumber = ivec2(gl_NumWorkGroups.xy);
+    uint index = location.x;
 
-//Generate a sample data set.  fSample1(), fSample2() and fSample3() define three scalar fields whose
-// values vary by the X,Y and Z coordinates and by the fTime value set by vSetTime()
-GLvoid vSetTime(GLfloat fNewTime)
-{
-    GLfloat fOffset;
-    GLint iSourceNum;
-
-    for(iSourceNum = 0; iSourceNum < 3; iSourceNum++)
-    {
-        sSourcePoint[iSourceNum].fX = 0.5;
-        sSourcePoint[iSourceNum].fY = 0.5;
-        sSourcePoint[iSourceNum].fZ = 0.5;
+     // take all the samples we will need
+    for(int i = 0; i < 17; i++) {
+          vec3 worldPosition = inputVertexBuffer.data[index].xyz + vec3(itemID.x*voxelScale,itemID.y*voxelScale,i*voxelScale);
+        cubeValues[itemID.x][itemID.y][i] = voxel(worldPosition+worldOffset);
     }
 
-    fTime = fNewTime;
-    fOffset = 1.0 + sinf(fTime);
-    sSourcePoint[0].fX *= fOffset;
-    sSourcePoint[1].fY *= fOffset;
-    sSourcePoint[2].fZ *= fOffset;
-}
+     int dummy = 3; // i don't understand the dynamically uniform expression thing, so I use these
+    dummy;
+    barrier();
 
-//fSample1 finds the distance of (fX, fY, fZ) from three moving points
-GLfloat fSample1(GLfloat fX, GLfloat fY, GLfloat fZ)
-{
-    GLdouble fResult = 0.0;
-    GLdouble fDx, fDy, fDz;
-    fDx = fX - sSourcePoint[0].fX;
-    fDy = fY - sSourcePoint[0].fY;
-    fDz = fZ - sSourcePoint[0].fZ;
-    fResult += 0.5/(fDx*fDx + fDy*fDy + fDz*fDz);
+     // calculate all possible vertex positions
+     for(int i = 0; i < 17; i++) {
+          vec3 worldPosition = inputVertexBuffer.data[index].xyz + vec3(itemID.x*voxelScale,itemID.y*voxelScale,i*voxelScale) + worldOffset;
 
-    fDx = fX - sSourcePoint[1].fX;
-    fDy = fY - sSourcePoint[1].fY;
-    fDz = fZ - sSourcePoint[1].fZ;
-    fResult += 1.0/(fDx*fDx + fDy*fDy + fDz*fDz);
+         float fOffset = 0.5;
+         edgeVertexData.data[index].left[itemID.x][itemID.y][i][0].coord = worldPosition + fOffset*vec3(1.0,0.0,0.0);
+          edgeVertexData.data[index].left[itemID.x][itemID.y][i][0].index = -1;
 
-    fDx = fX - sSourcePoint[2].fX;
-    fDy = fY - sSourcePoint[2].fY;
-    fDz = fZ - sSourcePoint[2].fZ;
-    fResult += 1.5/(fDx*fDx + fDy*fDy + fDz*fDz);
+         fOffset = getOffset(cubeValues[itemID.x][itemID.y][i], cubeValues[itemID.x][itemID.y+1][i]);
+         edgeVertexData.data[index].left[itemID.x][itemID.y][i][1].coord = worldPosition + fOffset*vec3(0.0,1.0,0.0);
+          edgeVertexData.data[index].left[itemID.x][itemID.y][i][1].index = -1;
 
-    return fResult;
-}
-
-//fSample2 finds the distance of (fX, fY, fZ) from three moving lines
-GLfloat fSample2(GLfloat fX, GLfloat fY, GLfloat fZ)
-{
-    GLdouble fResult = 0.0;
-    GLdouble fDx, fDy, fDz;
-    fDx = fX - sSourcePoint[0].fX;
-    fDy = fY - sSourcePoint[0].fY;
-    fResult += 0.5/(fDx*fDx + fDy*fDy);
-
-    fDx = fX - sSourcePoint[1].fX;
-    fDz = fZ - sSourcePoint[1].fZ;
-    fResult += 0.75/(fDx*fDx + fDz*fDz);
-
-    fDy = fY - sSourcePoint[2].fY;
-    fDz = fZ - sSourcePoint[2].fZ;
-    fResult += 1.0/(fDy*fDy + fDz*fDz);
-
-    return fResult;
-}
-
-
-//fSample2 defines a height field by plugging the distance from the center into the sin and cos functions
-GLfloat fSample3(GLfloat fX, GLfloat fY, GLfloat fZ)
-{
-    GLfloat fHeight = 20.0*(fTime + sqrt((0.5-fX)*(0.5-fX) + (0.5-fY)*(0.5-fY)));
-    fHeight = 1.5 + 0.1*(sinf(fHeight) + cosf(fHeight));
-    GLdouble fResult = (fHeight - fZ)*50.0;
-
-    return fResult;
-}
-
-
-//vGetNormal() finds the gradient of the scalar field at a point
-//This gradient can be used as a very accurate vertx normal for lighting calculations
-GLvoid vGetNormal(struct GLvector *rfNormal, GLfloat fX, GLfloat fY, GLfloat fZ)
-{
-    rfNormal->fX = fSample(fX-0.01, fY, fZ) - fSample(fX+0.01, fY, fZ);
-    rfNormal->fY = fSample(fX, fY-0.01, fZ) - fSample(fX, fY+0.01, fZ);
-    rfNormal->fZ = fSample(fX, fY, fZ-0.01) - fSample(fX, fY, fZ+0.01);
-    vNormalizeVector(rfNormal, rfNormal);
-}
-
-Vec3 gvertices[200000];
-int vertexCount;
-
-//vMarchCube1 performs the Marching Cubes algorithm on a single cube
-void vMarchCube1(GLfloat fX, GLfloat fY, GLfloat fZ, GLfloat fScale)
-{
-    extern GLint aiCubeEdgeFlags[256];
-    extern GLint a2iTriangleConnectionTable[256][16];
-
-    GLint iCorner, iVertex, iVertexTest, iEdge, iTriangle, iFlagIndex, iEdgeFlags;
-    GLfloat fOffset;
-    //GLvector sColor;
-    GLfloat afCubeValue[8];
-    struct GLvector asEdgeVertex[12];
-    struct GLvector asEdgeNorm[12];
-
-    //Make a local copy of the values at the cube's corners
-    for(iVertex = 0; iVertex < 8; iVertex++)
-    {
-        float lscale = 0.1f;
-        afCubeValue[iVertex] = stb_perlin_noise3(fX*lscale + a2fVertexOffset[iVertex][0]*fScale*lscale,
-                                    fY*lscale + a2fVertexOffset[iVertex][1]*fScale*lscale,
-                                    fZ*lscale + a2fVertexOffset[iVertex][2]*fScale*lscale,0,0,0);
-        /*afCubeValue[iVertex] = fSample(fX + a2fVertexOffset[iVertex][0]*fScale,
-                                           fY + a2fVertexOffset[iVertex][1]*fScale,
-                                           fZ + a2fVertexOffset[iVertex][2]*fScale);*/
+         fOffset = 0.5;
+         edgeVertexData.data[index].left[itemID.x][itemID.y][i][2].coord = worldPosition + fOffset*vec3(0.0,0.0,1.0);
+          edgeVertexData.data[index].left[itemID.x][itemID.y][i][2].index = -1;
     }
 
-    //Find which vertices are inside of the surface and which are outside
-    iFlagIndex = 0;
-    for(iVertexTest = 0; iVertexTest < 8; iVertexTest++)
-    {
-        if(afCubeValue[iVertexTest] <= 0.0f)
-                iFlagIndex |= 1<<iVertexTest;
-    }
+     dummy = 4;
+    dummy;
+    barrier();
 
-    /*iFlagIndex = 0; // alternative without bitwise stuff
-    int flg = 1;
-    for(iVertexTest = 0; iVertexTest < 8; iVertexTest++,flg*=2)
-    {
-        if(afCubeValue[iVertexTest] <= 0.0f)
-                iFlagIndex += flg;
-    }*/
-
-    //Find which edges are intersected by the surface
-    iEdgeFlags = aiCubeEdgeFlags[iFlagIndex];
-
-    //If the cube is entirely inside or outside of the surface, then there will be no intersections
-    if(iEdgeFlags == 0)
-    {
-        //printf("returned 0\n");
+    if(itemID.x == 16 || itemID.y == 16)
         return;
-    }
 
-    //Find the point of intersection of the surface with each edge
-    //Then find the normal to the surface at those points
-    for(iEdge = 0; iEdge < 12; iEdge++)
-    {
-        //if there is an intersection on this edge
-        if(iEdgeFlags & (1<<iEdge))
-        {
-            fOffset = fGetOffset(afCubeValue[ a2iEdgeConnection[iEdge][0] ],
-                                         afCubeValue[ a2iEdgeConnection[iEdge][1] ], fTargetValue);
+     for(int i = 0; i < 16; i++)
+     {
+        vec3 coord = vec3(inputVertexBuffer.data[index].x + ((itemID.x)*voxelScale),
+                           inputVertexBuffer.data[index].y + ((itemID.y)*voxelScale),
+                           inputVertexBuffer.data[index].z + (i*voxelScale)) + worldOffset;
+         vMarchCube1(itemID.x, itemID.y, i, coord, index);
+     }
 
-            asEdgeVertex[iEdge].fX = fX + (a2fVertexOffset[ a2iEdgeConnection[iEdge][0] ][0]  +  fOffset * a2fEdgeDirection[iEdge][0]) * fScale;
-            asEdgeVertex[iEdge].fY = fY + (a2fVertexOffset[ a2iEdgeConnection[iEdge][0] ][1]  +  fOffset * a2fEdgeDirection[iEdge][1]) * fScale;
-            asEdgeVertex[iEdge].fZ = fZ + (a2fVertexOffset[ a2iEdgeConnection[iEdge][0] ][2]  +  fOffset * a2fEdgeDirection[iEdge][2]) * fScale;
-
-            vGetNormal(&asEdgeNorm[iEdge], asEdgeVertex[iEdge].fX, asEdgeVertex[iEdge].fY, asEdgeVertex[iEdge].fZ);
-        }
-    }
-
-
-    //Draw the triangles that were found.  There can be up to five per cube
-    for(iTriangle = 0; iTriangle < 5; iTriangle++)
-    {
-        if(a2iTriangleConnectionTable[iFlagIndex][3*iTriangle] < 0)
-            break;
-
-        for(iCorner = 0; iCorner < 3; iCorner++)
-        {
-            iVertex = a2iTriangleConnectionTable[iFlagIndex][3*iTriangle+iCorner];
-
-            //vGetColor(sColor, asEdgeVertex[iVertex], asEdgeNorm[iVertex]);
-            //glColor3f(sColor.fX, sColor.fY, sColor.fZ);
-            //glNormal3f(asEdgeNorm[iVertex].fX,   asEdgeNorm[iVertex].fY,   asEdgeNorm[iVertex].fZ);
-            gvertices[vertexCount].x = asEdgeVertex[iVertex].fX;
-            gvertices[vertexCount].y = asEdgeVertex[iVertex].fY;
-            gvertices[vertexCount].z = asEdgeVertex[iVertex].fZ;
-            vertexCount++;
-            //glVertex3f(asEdgeVertex[iVertex].fX, asEdgeVertex[iVertex].fY, asEdgeVertex[iVertex].fZ);
-        }
-    }
-}
-
-Mesh* terrainGen(r32 y)
-{
-    vertexCount = 0;
-    i32 ws = 60;
-    for(int i= 0; i < ws; i++)
-    {
-        for(int j= 0; j < 4; j++)
-        {
-            for(int k= 0; k < ws; k++)
-            {
-                vMarchCube1(i*1.f+0.01f,j*1.f+0.01f+y,k*1.0f+0.01f,1.0f);
-            }
-        }
-    }
-    printf("Generated %d vertices\n",vertexCount);
-
-    // mesh generation
-    int vertexSize      = vertexCount*sizeof(Vec4);
-    int normalSize      = vertexCount*sizeof(Vec3);
-    int texSize         = vertexCount*sizeof(Vec2);
-    int indexSize       = vertexCount*sizeof(u16);
-    int tangentSize     = vertexCount*sizeof(Vec3);
-    const void* data    = malloc(vertexSize+normalSize+indexSize+texSize+tangentSize);
-
-    Vec4* vertices = (Vec4*)data;
-
-    char* data2 = (char*)data;
-    Vec3* normals = (Vec3*)((data2+vertexCount*sizeof(Vec4)));
-    Vec2* uv = (Vec2*)(normals + vertexCount);
-
-    data2 += vertexSize+normalSize+texSize;
-    u16* triangles = (u16*)(uv + vertexCount);
-
-    for(int i = 0; i < vertexCount; i++)
-    {
-        vertices[i] = vec4(gvertices[i].x,gvertices[i].y,gvertices[i].z,1.0f);
-        triangles[i] = (u16)i;
-        if(i < 0 || i > 60000)
-            printf("I WAS OVER 60K!!!\n");
-    }
-
-    Mesh* mesh = malloc(sizeof(Mesh));
-    meshInit(mesh);
-    mesh->vertices = vertexCount;
-    mesh->normals = vertexCount;
-    mesh->faces = vertexCount/3;
-    mesh->data = (void*)data;
-    mesh->loadedToGPU = false;
-
-    meshRecalculateBounds(mesh);
-    return mesh;
-}
-
-//vMarchTetrahedron performs the Marching Tetrahedrons algorithm on a single tetrahedron
-/*GLvoid vMarchTetrahedron(GLvector *pasTetrahedronPosition, GLfloat *pafTetrahedronValue)
-{
-    extern GLint aiTetrahedronEdgeFlags[16];
-    extern GLint a2iTetrahedronTriangles[16][7];
-
-    GLint iEdge, iVert0, iVert1, iEdgeFlags, iTriangle, iCorner, iVertex, iFlagIndex = 0;
-    GLfloat fOffset, fInvOffset, fValue = 0.0;
-    GLvector asEdgeVertex[6];
-    GLvector asEdgeNorm[6];
-    GLvector sColor;
-
-    //Find which vertices are inside of the surface and which are outside
-    for(iVertex = 0; iVertex < 4; iVertex++)
-    {
-            if(pafTetrahedronValue[iVertex] <= fTargetValue)
-                    iFlagIndex |= 1<<iVertex;
-    }
-
-    //Find which edges are intersected by the surface
-    iEdgeFlags = aiTetrahedronEdgeFlags[iFlagIndex];
-
-    //If the tetrahedron is entirely inside or outside of the surface, then there will be no intersections
-    if(iEdgeFlags == 0)
-    {
-            return;
-    }
-    //Find the point of intersection of the surface with each edge
-    // Then find the normal to the surface at those points
-    for(iEdge = 0; iEdge < 6; iEdge++)
-    {
-            //if there is an intersection on this edge
-            if(iEdgeFlags & (1<<iEdge))
-            {
-                    iVert0 = a2iTetrahedronEdgeConnection[iEdge][0];
-                    iVert1 = a2iTetrahedronEdgeConnection[iEdge][1];
-                    fOffset = fGetOffset(pafTetrahedronValue[iVert0], pafTetrahedronValue[iVert1], fTargetValue);
-                    fInvOffset = 1.0 - fOffset;
-
-                    asEdgeVertex[iEdge].fX = fInvOffset*pasTetrahedronPosition[iVert0].fX  +  fOffset*pasTetrahedronPosition[iVert1].fX;
-                    asEdgeVertex[iEdge].fY = fInvOffset*pasTetrahedronPosition[iVert0].fY  +  fOffset*pasTetrahedronPosition[iVert1].fY;
-                    asEdgeVertex[iEdge].fZ = fInvOffset*pasTetrahedronPosition[iVert0].fZ  +  fOffset*pasTetrahedronPosition[iVert1].fZ;
-
-                    vGetNormal(asEdgeNorm[iEdge], asEdgeVertex[iEdge].fX, asEdgeVertex[iEdge].fY, asEdgeVertex[iEdge].fZ);
-            }
-    }
-    //Draw the triangles that were found.  There can be up to 2 per tetrahedron
-    for(iTriangle = 0; iTriangle < 2; iTriangle++)
-    {
-            if(a2iTetrahedronTriangles[iFlagIndex][3*iTriangle] < 0)
-                    break;
-
-            for(iCorner = 0; iCorner < 3; iCorner++)
-            {
-                    iVertex = a2iTetrahedronTriangles[iFlagIndex][3*iTriangle+iCorner];
-
-                    vGetColor(sColor, asEdgeVertex[iVertex], asEdgeNorm[iVertex]);
-                    glColor3f(sColor.fX, sColor.fY, sColor.fZ);
-                    glNormal3f(asEdgeNorm[iVertex].fX,   asEdgeNorm[iVertex].fY,   asEdgeNorm[iVertex].fZ);
-                    glVertex3f(asEdgeVertex[iVertex].fX, asEdgeVertex[iVertex].fY, asEdgeVertex[iVertex].fZ);
-            }
-    }
 }*/
 
-
-
-//vMarchCube2 performs the Marching Tetrahedrons algorithm on a single cube by making six calls to vMarchTetrahedron
-/*GLvoid vMarchCube2(GLfloat fX, GLfloat fY, GLfloat fZ, GLfloat fScale)
-{
-    GLint iVertex, iTetrahedron, iVertexInACube;
-    struct GLvector asCubePosition[8];
-    GLfloat  afCubeValue[8];
-    struct GLvector asTetrahedronPosition[4];
-    GLfloat  afTetrahedronValue[4];
-
-    //Make a local copy of the cube's corner positions
-    for(iVertex = 0; iVertex < 8; iVertex++)
-    {
-        asCubePosition[iVertex].fX = fX + a2fVertexOffset[iVertex][0]*fScale;
-        asCubePosition[iVertex].fY = fY + a2fVertexOffset[iVertex][1]*fScale;
-        asCubePosition[iVertex].fZ = fZ + a2fVertexOffset[iVertex][2]*fScale;
-    }
-
-    //Make a local copy of the cube's corner values
-    for(iVertex = 0; iVertex < 8; iVertex++)
-    {
-        afCubeValue[iVertex] = fSample(asCubePosition[iVertex].fX,
-                                           asCubePosition[iVertex].fY,
-                                       asCubePosition[iVertex].fZ);
-    }
-
-    for(iTetrahedron = 0; iTetrahedron < 6; iTetrahedron++)
-    {
-        for(iVertex = 0; iVertex < 4; iVertex++)
-        {
-            iVertexInACube = a2iTetrahedronsInACube[iTetrahedron][iVertex];
-            asTetrahedronPosition[iVertex].fX = asCubePosition[iVertexInACube].fX;
-            asTetrahedronPosition[iVertex].fY = asCubePosition[iVertexInACube].fY;
-            asTetrahedronPosition[iVertex].fZ = asCubePosition[iVertexInACube].fZ;
-            afTetrahedronValue[iVertex] = afCubeValue[iVertexInACube];
-        }
-        vMarchTetrahedron(asTetrahedronPosition, afTetrahedronValue);
-    }
-}*/
-
-
-// For any edge, if one vertex is inside of the surface and the other is outside of the surface
-//  then the edge intersects the surface
-// For each of the 4 vertices of the tetrahedron can be two possible states : either inside or outside of the surface
-// For any tetrahedron the are 2^4=16 possible sets of vertex states
-// This table lists the edges intersected by the surface for all 16 possible vertex states
-// There are 6 edges.  For each entry in the table, if edge #n is intersected, then bit #n is set to 1
-
-GLint aiTetrahedronEdgeFlags[16]=
-{
-    0x00, 0x0d, 0x13, 0x1e, 0x26, 0x2b, 0x35, 0x38, 0x38, 0x35, 0x2b, 0x26, 0x1e, 0x13, 0x0d, 0x00,
-};
-
-
-// For each of the possible vertex states listed in aiTetrahedronEdgeFlags there is a specific triangulation
-// of the edge intersection points.  a2iTetrahedronTriangles lists all of them in the form of
-// 0-2 edge triples with the list terminated by the invalid value -1.
-//
-// I generated this table by hand
-
-GLint a2iTetrahedronTriangles[16][7] =
-{
-    {-1, -1, -1, -1, -1, -1, -1},
-    { 0,  3,  2, -1, -1, -1, -1},
-    { 0,  1,  4, -1, -1, -1, -1},
-    { 1,  4,  2,  2,  4,  3, -1},
-
-    { 1,  2,  5, -1, -1, -1, -1},
-    { 0,  3,  5,  0,  5,  1, -1},
-    { 0,  2,  5,  0,  5,  4, -1},
-    { 5,  4,  3, -1, -1, -1, -1},
-
-    { 3,  4,  5, -1, -1, -1, -1},
-    { 4,  5,  0,  5,  2,  0, -1},
-    { 1,  5,  0,  5,  3,  0, -1},
-    { 5,  2,  1, -1, -1, -1, -1},
-
-    { 3,  4,  2,  2,  4,  1, -1},
-    { 4,  1,  0, -1, -1, -1, -1},
-    { 2,  3,  0, -1, -1, -1, -1},
-    {-1, -1, -1, -1, -1, -1, -1},
-};
-
-// For any edge, if one vertex is inside of the surface and the other is outside of the surface
-//  then the edge intersects the surface
-// For each of the 8 vertices of the cube can be two possible states : either inside or outside of the surface
-// For any cube the are 2^8=256 possible sets of vertex states
-// This table lists the edges intersected by the surface for all 256 possible vertex states
-// There are 12 edges.  For each entry in the table, if edge #n is intersected, then bit #n is set to 1
-
-GLint aiCubeEdgeFlags[256]=
+i32 aiCubeEdgeFlags[256]=
 {
     0x000, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c, 0x80c, 0x905, 0xa0f, 0xb06, 0xc0a, 0xd03, 0xe09, 0xf00,
     0x190, 0x099, 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c, 0x99c, 0x895, 0xb9f, 0xa96, 0xd9a, 0xc93, 0xf99, 0xe90,
@@ -552,7 +410,7 @@ GLint aiCubeEdgeFlags[256]=
 //
 //  I found this table in an example program someone wrote long ago.  It was probably generated by hand
 
-GLint a2iTriangleConnectionTable[256][16] =
+i32 mcubesLookup[256][16] =
 {
     {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
     {0, 8, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},

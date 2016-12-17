@@ -311,158 +311,269 @@ void initMCubesBuffer2(Permanent_Storage *state)
     state->mcubesTexture2 = opengl_Int16Texture1D(256, aiCubeEdgeFlags2);
 }
 
-Vec3 getChunkOrigin(IVec3 chunkId, r32 voxelSize)
+Vec3 getChunkOrigin(IVec3 chunkId)
 {
     Vec3 ret;
-    ret.x = chunkId.x * voxelSize * CHUNK_SIZE;
+    ret.x = chunkId.x/* * voxelSize*/ * CHUNK_SIZE;
     ret.y = 0.0f;
-    ret.z = chunkId.z * voxelSize * CHUNK_SIZE;
+    ret.z = chunkId.z/* * voxelSize*/ * CHUNK_SIZE;
     return ret;
 }
 
-IVec3 getChunkId(Vec3 position, r32 voxelSize)
+IVec3 getChunkId(Vec3 position)
 {
     IVec3 ret;
-    ret.x = (i32)floorf(((r32)position.x / (voxelSize*CHUNK_SIZE)));
+    ret.x = (i32)floorf(((r32)position.x / (/*voxelSize**/CHUNK_SIZE)));
     ret.y = 0;
-    ret.z = (i32)floorf(((r32)position.z / (voxelSize*CHUNK_SIZE)));
+    ret.z = (i32)floorf(((r32)position.z / (/*voxelSize**/CHUNK_SIZE)));
     return ret;
 }
 
-b32 isChunkLoaded(Permanent_Storage *state, IVec3 chunkId, TerrainChunk** result)
+/*TerrainChunk* getChunksPointer(Permanent_Storage *state, u32 lod)
+{
+    TerrainChunk* chunks;
+    switch(lod)
+    {
+        case 3:
+        {
+            chunks = state->game.lod3LoadedChunks;
+        } break;
+        case 2:
+        {
+            chunks = state->game.lod2LoadedChunks;
+        } break;
+        case 1:
+        {
+            chunks = state->game.lod1LoadedChunks;
+        } break;
+        default:
+            assert(false);
+            break;
+    }
+    return chunks;
+}*/
+
+b32 isChunkLoaded(Permanent_Storage *state, IVec3 chunkId)
 {
     TerrainChunk* chunks = state->game.loadedChunks;
-    for(u32 i = 0; i < state->game.loadedChunkCount; i++)
+    for(u32 i = 0; i < state->game.totalLoadedChunkCount; i++)
     {
         if(chunks[i].chunkCoordinate.x == chunkId.x &&
                 chunks[i].chunkCoordinate.y == chunkId.y &&
                 chunks[i].chunkCoordinate.z == chunkId.z)
         {
-            *result = &chunks[i];
             return chunks[i].isAllocate;
         }
     }
-    result = 0;
     return 0;
 }
 
-// Extremely terrible performance chunk loader
-void findHighestPriorityChunk(Permanent_Storage *state, Camera* cam)
+u32 getHighestChunkRing(Permanent_Storage *state, Camera* cam)
+{
+    IVec3 currentChunk = getChunkId(cam->position);
+
+    i32 maxRing = -1;
+
+    TerrainChunk* chunks = state->game.loadedChunks;
+    for(u32 i = 0; i < state->game.totalLoadedChunkCount; i++)
+    {
+        i32 ringx = abs(chunks[i].chunkCoordinate.x - currentChunk.x);
+        i32 ringz = abs(chunks[i].chunkCoordinate.z - currentChunk.z);
+        i32 maxValue = max(ringx,ringz);
+        if(maxRing < maxValue)
+            maxRing = maxValue;
+    }
+
+    assert(maxRing >= 1);
+    return maxRing;
+}
+
+r32 calculatePriority(Vec3 *pos, Camera *cam)
 {
     float distanceWeight = 250.0f;
-    float frustumMultiplier = 15.0f;
-    float reloadPriorityCost = 0.02f;
+    Vec3 camToChunk;
+    vec3Sub(&camToChunk, pos, &cam->position);
+    r32 priorityValue = distanceWeight / vec3Mag2(&camToChunk);
+    /*if(cameraIsPointInFrustum(cam, prioritiOrigin))
+        priorityValue *= frustumMultiplier;*/
+    return priorityValue;
+}
 
-    r32 voxelScale = state->terrainGenState.voxelScale;
-    IVec3 currentChunk = getChunkId(cam->position, voxelScale);
-    b32 minsChecked = 0;
+struct ChunkPriorityResult
+{
+    r32 highestPriority;
+    TerrainChunk* highestPriorityChunk;
+    r32 lowestPriority;
+    TerrainChunk* lowestPriorityChunk;
+} ChunkPriorityResult;
 
-    i32 searchRing = 1;
+void getLodPriorityExtremes(Permanent_Storage *state, Camera* cam, struct ChunkPriorityResult* result, u32 lod)
+{
+    //r32 voxelScale = state->terrainGenState.voxelScale;
+    Vec3 toMiddle = vec3(CHUNK_SIZE/2,0.0f,CHUNK_SIZE/2);
 
-    Vec3 toMiddle = vec3(CHUNK_SIZE*voxelScale,0.0f,CHUNK_SIZE*voxelScale);
+    r32 minPriority = R32MAX;
+    r32 maxPriority = R32MIN;
+    TerrainChunk* lowestChunk = 0;
+    TerrainChunk* highestChunk = 0;
 
-    while(state->game.loadedChunkCount < MAX_LOADED_CHUNKS || !minsChecked)
+    TerrainChunk* chunks = state->game.loadedChunks;
+    for(u32 i = 0; i < state->game.totalLoadedChunkCount; i++)
     {
-        if(state->game.loadedChunkCount >= MAX_LOADED_CHUNKS)
-            searchRing = 6;
-
-        r32 maxPriority = R32MIN;
-        TerrainChunk* highestChunk = 0;
-        IVec3 highestChunkId;
-
-        for(int i = -searchRing; i < searchRing; i++)
+        if(chunks[i].isAllocate && chunks[i].LODLevel == lod)
         {
-            for(int j = -searchRing; j < searchRing; j++)
-            {
-                TerrainChunk* chunk = 0;
-                IVec3 searchChunk = currentChunk;
-                searchChunk.x += i;
-                searchChunk.z += j;
-                if(!isChunkLoaded(state, searchChunk, &chunk))
-                {
-                    Vec3 chunkOrigin;
+            Vec3 prioritiOrigin;
+            vec3Add(&prioritiOrigin, &chunks[i].origin, &toMiddle);
 
-                    if(chunk == 0)
+            r32 priorityValue = calculatePriority(&prioritiOrigin,cam);
+            if(minPriority > priorityValue)
+            {
+                minPriority = priorityValue;
+                lowestChunk = &chunks[i];
+            }
+            if(maxPriority < priorityValue)
+            {
+                maxPriority = priorityValue;
+                highestChunk = &chunks[i];
+            }
+        }
+    }
+    result->lowestPriority = minPriority;
+    result->lowestPriorityChunk = lowestChunk;
+    result->highestPriority = maxPriority;
+    result->highestPriorityChunk = highestChunk;
+}
+
+void chunkCheck(Permanent_Storage *state, Camera *cam)
+{
+    IVec3 currentChunk = getChunkId(cam->position);
+
+    if(state->game.loadedChunkCount[3] < MAX_LOD_3_LOADED_CHUNKS ||
+            state->game.loadedChunkCount[2] < MAX_LOD_2_LOADED_CHUNKS ||
+            state->game.loadedChunkCount[1] < MAX_LOD_1_LOADED_CHUNKS)
+    {
+        i32 searchRing = 1;
+        while(state->game.loadedChunkCount[3] < MAX_LOD_3_LOADED_CHUNKS ||
+              state->game.loadedChunkCount[2] < MAX_LOD_2_LOADED_CHUNKS ||
+              state->game.loadedChunkCount[1] < MAX_LOD_1_LOADED_CHUNKS)
+        {
+            for(int i = -searchRing; i <= searchRing; i++)
+            {
+                for(int j = -searchRing; j <= searchRing; j++)
+                {
+                    if(state->game.loadedChunkCount[3] < MAX_LOD_3_LOADED_CHUNKS)
                     {
-                        chunkOrigin = getChunkOrigin(searchChunk, voxelScale);
-                        vec3Add(&chunkOrigin, &chunkOrigin, &toMiddle);
+                        IVec3 searchChunk = currentChunk;
+                        searchChunk.x += i;
+                        searchChunk.z += j;
+                        if(!isChunkLoaded(state, searchChunk))
+                        {
+                            TerrainChunk* ch = &state->game.loadedChunks[state->game.totalLoadedChunkCount++];
+                            state->game.loadedChunkCount[3]++;
+                            *ch = loadChunk(state, searchChunk, 3);
+                            addEntity(state, &ch->entity);
+                            printf("load a chunk3 %d %d %d\n",searchChunk.x,searchChunk.y,searchChunk.z);
+                            return;
+                        }
+                    }
+                    else if(state->game.loadedChunkCount[2] < MAX_LOD_2_LOADED_CHUNKS)
+                    {
+                        IVec3 searchChunk = currentChunk;
+                        searchChunk.x += i;
+                        searchChunk.z += j;
+                        if(!isChunkLoaded(state, searchChunk))
+                        {
+                            TerrainChunk* ch = &state->game.loadedChunks[state->game.totalLoadedChunkCount++];
+                            state->game.loadedChunkCount[2]++;
+                            *ch = loadChunk(state, searchChunk, 2);
+                            addEntity(state, &ch->entity);
+                            printf("load a chunk2 %d %d %d\n",searchChunk.x,searchChunk.y,searchChunk.z);
+                            return;
+                        }
+                    }
+                    else if(state->game.loadedChunkCount[1] < MAX_LOD_1_LOADED_CHUNKS)
+                    {
+                        IVec3 searchChunk = currentChunk;
+                        searchChunk.x += i;
+                        searchChunk.z += j;
+                        if(!isChunkLoaded(state, searchChunk))
+                        {
+                            TerrainChunk* ch = &state->game.loadedChunks[state->game.totalLoadedChunkCount++];
+                            state->game.loadedChunkCount[1]++;
+                            *ch = loadChunk(state, searchChunk, 1);
+                            addEntity(state, &ch->entity);
+                            printf("load a chunk1 %d %d %d\n",searchChunk.x,searchChunk.y,searchChunk.z);
+                            return;
+                        }
                     }
                     else
                     {
-                        vec3Add(&chunkOrigin, &chunk->origin, &toMiddle);
-                        chunkOrigin = chunk->origin;
+                        goto stop;
                     }
+                }
+            }
+            stop:
+            searchRing++;
+        }
+    }
+    else
+    {
+        Vec3 toMiddle = vec3(CHUNK_SIZE/2,0.0f,CHUNK_SIZE/2);
 
-                    r32 priorityValue;
-                    Vec3 camToChunk;
-                    vec3Sub(&camToChunk, &chunkOrigin, &cam->position);
+        r32 maxUnloadedPriority = R32MIN;
+        IVec3 highestUnloadedChunkId;
 
-                    priorityValue = distanceWeight / vec3Mag2(&camToChunk);
-                    if(cameraIsPointInFrustum(cam, chunkOrigin))
-                        priorityValue *= frustumMultiplier;
-                    if(maxPriority < priorityValue)
+        // find highest unloaded chunkId
+        i32 ring = getHighestChunkRing(state, cam);
+        for(i32 i = -ring; i <= ring; i++)
+        {
+            for(i32 j = -ring; j <= ring; j++)
+            {
+                IVec3 searchChunk = currentChunk;
+                searchChunk.x += i;
+                searchChunk.z += j;
+                if(!isChunkLoaded(state, searchChunk))
+                {
+                    Vec3 chunkOrigin = getChunkOrigin(searchChunk);
+                    vec3Add(&chunkOrigin, &chunkOrigin, &toMiddle);
+
+                    r32 priorityValue = calculatePriority(&chunkOrigin, cam);
+                    if(maxUnloadedPriority < priorityValue)
                     {
-                        maxPriority = priorityValue;
-                        highestChunk = chunk;
-                        highestChunkId = searchChunk;
+                        maxUnloadedPriority = priorityValue;
+                        highestUnloadedChunkId = searchChunk;
                     }
                 }
             }
         }
-        if(maxPriority != R32MIN && state->game.loadedChunkCount < MAX_LOADED_CHUNKS)
+
+        struct ChunkPriorityResult result[4] = {};
+        for(int lod = 1; lod <= 3; lod++)
         {
-            printf("load a chunk %d %d %d\n",highestChunkId.x,highestChunkId.y,highestChunkId.z);
-            TerrainChunk* ch = &state->game.loadedChunks[state->game.loadedChunkCount++];
-            *ch = loadChunk(state, highestChunkId);
-            addEntity(state, &ch->entity);
+            getLodPriorityExtremes(state, cam, &result[lod], lod);
+            //printf("lod %d max %f min %f \n",lod, result[lod].highestPriority, result[lod].lowestPriority);
+        }
+
+        if(result[1].lowestPriority < maxUnloadedPriority)
+        {
+            Vec3 newOrigin = getChunkOrigin(highestUnloadedChunkId);
+            reloadChunk(state, newOrigin, result[1].lowestPriorityChunk, 1);
+            result[1].lowestPriorityChunk->origin = newOrigin;
+            result[1].lowestPriorityChunk->chunkCoordinate = highestUnloadedChunkId;
+            printf("changed chunk to %d %d %d\n",highestUnloadedChunkId.x,highestUnloadedChunkId.y,highestUnloadedChunkId.z);
             return;
         }
-        else if(maxPriority != R32MIN)
+
+        for(int lod = 1; lod < 3; lod++)
         {
-            r32 minPriority = R32MAX;
-            TerrainChunk* lowestChunk = 0;
-            IVec3 lowestChunkId;
-
-            TerrainChunk* chunks = state->game.loadedChunks;
-            for(u32 i = 0; i < state->game.loadedChunkCount; i++)
+            if(result[lod].highestPriority > result[lod+1].lowestPriority)
             {
-                if(chunks[i].isAllocate)
-                {
-                    Vec3 prioritiOrigin;
-                    vec3Add(&prioritiOrigin, &chunks[i].origin, &toMiddle);
-
-                    r32 priorityValue;
-                    Vec3 camToChunk;
-                    vec3Sub(&camToChunk, &prioritiOrigin, &cam->position);
-
-                    priorityValue = distanceWeight / vec3Mag2(&camToChunk);
-                    if(cameraIsPointInFrustum(cam, prioritiOrigin))
-                        priorityValue *= frustumMultiplier;
-                    if(minPriority > priorityValue)
-                    {
-                        minPriority = priorityValue;
-                        lowestChunk = &chunks[i];
-                        lowestChunkId = chunks[i].chunkCoordinate;
-                    }
-                }
-            }
-            if(minPriority != R32MAX && (maxPriority-reloadPriorityCost) > minPriority)
-            {
-                Vec3 newOrigin = getChunkOrigin(highestChunkId, voxelScale);
-                loadChunkVertices(state, newOrigin, &lowestChunk->entity.amesh);
-                lowestChunk->origin = newOrigin;
-                lowestChunk->chunkCoordinate = highestChunkId;
-                printf("changed chunk to %d %d %d\n",highestChunkId.x,highestChunkId.y,highestChunkId.z);
+                reloadChunk(state, result[lod].highestPriorityChunk->origin, result[lod].highestPriorityChunk, lod+1);
+                reloadChunk(state, result[lod+1].lowestPriorityChunk->origin, result[lod+1].lowestPriorityChunk, lod);
+                printf("proted chunk from lod %d to %d\n",lod,lod+1);
                 return;
             }
-
-            minsChecked = 1;
         }
-        else
-        {
-            minsChecked = 1;
-        }
-        searchRing++;
     }
 }
 
@@ -471,7 +582,7 @@ void init(EngineMemory *mem, int width, int height)
 {
     Platform = mem->platformApi;
 
-    inticl();
+    //inticl();
 
     memset(mem->gameState, 0, Megabytes(100));
 
@@ -504,7 +615,7 @@ void init(EngineMemory *mem, int width, int height)
     cameraInitialize(&(state->main_cam));
     state->main_cam.FOV = 45.f;
     state->main_cam.nearPlane = 0.1f;
-    state->main_cam.farPlane = 1000.f;
+    state->main_cam.farPlane = 10000.f;
     state->numEntities = 0;
     state->numShaders = 0;
     state->captured = 0;
@@ -512,7 +623,11 @@ void init(EngineMemory *mem, int width, int height)
     //openglCreateDepthFBO(&state->shadowmap_fbo, SHADOWMAP_RES, SHADOWMAP_RES, true);
 
     initMCubesBuffer2(state);
-    state->game.loadedChunkCount = 0;
+    state->game.loadedChunkCount[0] = 0;
+    state->game.loadedChunkCount[1] = 0;
+    state->game.loadedChunkCount[2] = 0;
+    state->game.loadedChunkCount[3] = 0;
+    state->game.totalLoadedChunkCount = 0;
 
     domeMesh = loadMesh("sphere.tt");
     mesh = loadMesh("barra/barra.tt");
@@ -520,14 +635,14 @@ void init(EngineMemory *mem, int width, int height)
 
     LoadedTexture *groundTexture = loadTextureToMemory(state->texturePool, "grass.png");
     opengl_LoadTexture(groundTexture);
-    LoadedTexture *barrelTexture = loadTextureToMemory(state->texturePool, "barra/barra.jpg");
+    /*LoadedTexture *barrelTexture = loadTextureToMemory(state->texturePool, "barra/barra.jpg");
     opengl_LoadTexture(barrelTexture);
     LoadedTexture *stoneTexture = loadTextureToMemory(state->texturePool, "textures/stone.jpg");
     opengl_LoadTexture(stoneTexture);
     LoadedTexture *brickDiffuseTexture = loadTextureToMemory(state->texturePool, "textures/brick_diff.jpg");
     opengl_LoadTexture(brickDiffuseTexture);
     LoadedTexture *brickNormalTexture = loadTextureToMemory(state->texturePool, "textures/brick_norm.jpg");
-    opengl_LoadTexture(brickNormalTexture);
+    opengl_LoadTexture(brickNormalTexture);*/
 
     Mesh *planeMesh = generatePlane();
 
@@ -546,7 +661,7 @@ void init(EngineMemory *mem, int width, int height)
     //initializeProgram(&state->game.terrainGenShader,"shaders/particle_vert.glsl", "shaders/frag_color_forward.glsl", "shaders/terrain_geo.glsl", ST_Particle);
 
     i32 res;
-    glGetIntegerv(GL_MAX_COMPUTE_SHARED_MEMORY_SIZE,&res);
+    glGetIntegerv(GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS,&res);
     printf("shared mem size: %d\n",res);
 
     int glerror = glGetError();
@@ -624,8 +739,16 @@ void init(EngineMemory *mem, int width, int height)
         //addEntity(state, &state->game.voxelTerrain[i]);
     }*/
 
-    state->game.testBarrel.mesh = *mesh/*planeMesh*/;
-    transformInit(&state->game.testBarrel.transform);
+    state->game.terrain.mesh = *terrainMesh;
+    transformInit(&state->game.terrain.transform);
+    state->game.terrain.transform.position =  vec3(0.f,0.f,0.f);
+    state->game.terrain.material.numTextures = 1;
+    state->game.terrain.material.shader = &state->game.texShaderForw;
+    state->game.terrain.material.texture_handle[0] = groundTexture->textureHandle;
+    addEntity(state, &state->game.terrain);
+
+    //state->game.testBarrel.mesh = *mesh/*planeMesh*/;
+    /*transformInit(&state->game.testBarrel.transform);
     state->game.testBarrel.material.numTextures = 1;
     state->game.testBarrel.material.shader = &state->game.texShaderForw;
     state->game.testBarrel.material.texture_handle[0] = barrelTexture->textureHandle;
@@ -655,7 +778,7 @@ void init(EngineMemory *mem, int width, int height)
     state->game.wall2.material.numTextures = 2;
     state->game.wall2.material.shader = &state->game.texShaderForw;
     state->game.wall2.material.texture_handle[0] = brickDiffuseTexture->textureHandle;
-    addEntity(state, &state->game.wall2);
+    addEntity(state, &state->game.wall2);*/
 
     state->game.dome.mesh = *domeMesh;
     transformInit(&state->game.dome.transform);
@@ -673,7 +796,8 @@ void init(EngineMemory *mem, int width, int height)
     // Debug stuff
     setupDebug(&state->debugState);
     // TODO: remove constant
-    openglInitializeTerrainGeneration(&state->terrainGenState, CHUNK_SIZE, CHUNK_SIZE, CHUNK_WORKGROUP_SIZE, 1.0);
+    u32 maxGroups = CHUNK_SIZE/CHUNK_WORKGROUP_SIZE;
+    openglInitializeTerrainGeneration(&state->terrainGenState, maxGroups, CHUNK_WORKGROUP_SIZE, 4.0);
 }
 
 int frames = 0;
@@ -774,7 +898,7 @@ Vec3 getClosestPointOnLine(Vec3 a, Vec3 b, Vec3 from)
 
 void forwardRender(Permanent_Storage *state, Input *input, float dt)
 {
-    //printf("frame time: %f (fps: %f)\n",dt,1.0f/dt);
+    printf("frame time: %f (fps: %f)\n",dt,1.0f/dt);
 
     openGLRenderCommands(&state->tstorage->glState,state->tstorage->renderGroup.commands, state->windowWidth, state->windowHeight);
 
@@ -889,25 +1013,40 @@ Entity* genTerrainChunk(Vec3 offset, Permanent_Storage* state, float scale)
 
 #include <time.h>
 
-void loadChunkVertices(Permanent_Storage* state, Vec3 origin, ArrayMesh* mesh)
+void reloadChunk(Permanent_Storage* state, Vec3 origin, TerrainChunk* tchunk, u32 lodLevel)
 {
+    tchunk->LODLevel = lodLevel;
+    assert(lodLevel > 0);
+
     glFinish();
     struct timespec start;
     clock_gettime(CLOCK_MONOTONIC, &start);
+    ArrayMesh* mesh = &tchunk->entity.amesh;
 
+#if 0
     state->terrainGenState.tunnelData.secondOctaveMax = (r32)absf(origin.z)/(r32)CHUNK_SIZE;
     state->terrainGenState.tunnelData.dxgoalFirstOctaveMax = 0.0f;
     state->terrainGenState.tunnelData.dzgoalFirstOctaveMax = 0.0f;
     state->terrainGenState.tunnelData.dxgoalSecondOctaveMax = 0.0f;
     state->terrainGenState.tunnelData.dzgoalSecondOctaveMax = (absf(origin.z+(r32)CHUNK_SIZE)/(r32)CHUNK_SIZE)-state->terrainGenState.tunnelData.secondOctaveMax;
     state->terrainGenState.tunnelData.chunkOrigin = vec4FromVec3AndW(origin,1.0);
+#else
+    state->terrainGenState.tunnelData.secondOctaveMax = 30.0f;
+    state->terrainGenState.tunnelData.dxgoalFirstOctaveMax = 0.0f;
+    state->terrainGenState.tunnelData.dzgoalFirstOctaveMax = 0.0f;
+    state->terrainGenState.tunnelData.dxgoalSecondOctaveMax = 0.0f;
+    state->terrainGenState.tunnelData.dzgoalSecondOctaveMax = 0.0f;
+#endif
 
-    openglPrepageTerrainGeneration(&state->terrainGenState, mesh->AttribBuffer, origin);
+    u32 groups = powInt(2,lodLevel-1);
+    r32 scale = (CHUNK_SIZE/CHUNK_WORKGROUP_SIZE)/groups;
+
+    openglPrepageTerrainGeneration(&state->terrainGenState, mesh->AttribBuffer, mesh->ElementBuffer, groups, scale);
     glUseProgram(state->terrainComputeShader.program);
     glUniform1i(state->terrainComputeShader.terrainGen.mcubesTexture1, 0);
     glUniform1i(state->terrainComputeShader.terrainGen.mcubesTexture2, 2);
     glUniform3fv(state->terrainComputeShader.terrainGen.worldOffset, 1, (GLfloat*)&origin);
-    glUniform1f(state->terrainComputeShader.terrainGen.voxelScale, state->terrainGenState.voxelScale);
+    glUniform1f(state->terrainComputeShader.terrainGen.voxelScale, scale);
     if(state->terrainComputeShader.terrainGen.mcubesTexture1 == -1 /*|| state->terrainComputeShader.terrainGen.mcubesTexture2 == -1*/
             || state->terrainComputeShader.terrainGen.worldOffset == -1 || state->terrainComputeShader.terrainGen.voxelScale == -1)
     {
@@ -923,51 +1062,104 @@ void loadChunkVertices(Permanent_Storage* state, Vec3 origin, ArrayMesh* mesh)
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, state->terrainGenState.tunnelBuffer);
     glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 3, state->terrainGenState.vertAtomicBuffer);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, state->terrainGenState.edgeVertexBuffer);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, mesh->ElementBuffer);
 
-    u32 workgourpsPerChunk = CHUNK_SIZE/CHUNK_WORKGROUP_SIZE;
-    glDispatchCompute(workgourpsPerChunk*workgourpsPerChunk*workgourpsPerChunk, 1, 1);
+    glDispatchCompute(groups*groups*groups, 1, 1);
 
     glFinish();
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
+
+    /*void* evb = malloc(state->terrainGenState.edgeVertexBufferSize);
+    glBindBuffer(GL_ARRAY_BUFFER, state->terrainGenState.edgeVertexBuffer);
+    glGetBufferSubData(GL_ARRAY_BUFFER, 0, state->terrainGenState.edgeVertexBufferSize, evb);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    printf("%p \n",evb);
+    free(evb);*/
 
     GLuint *userCounters;
     glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, state->terrainGenState.vertAtomicBuffer);
     userCounters = (GLuint*)glMapBufferRange(GL_ATOMIC_COUNTER_BUFFER,
                                              0,
-                                             sizeof(GLuint),
+                                             sizeof(GLuint)*2,
                                              GL_MAP_READ_BIT
                                             );
     u32 triangleCount = userCounters[0];
-    printf("chunk triangles %d\n", triangleCount);
+    u32 indexCount = userCounters[1];
+    printf("chunk vertices %d\n", triangleCount);
+    printf("chunk index triangles %d\n", indexCount);
     glUnmapBuffer(GL_ATOMIC_COUNTER_BUFFER);
-    mesh->vertices = triangleCount*3;
-    mesh->faces = triangleCount;
+    mesh->vertices = triangleCount;
+    mesh->faces = indexCount;
     mesh->loadedToGPU = true;
     mesh->data = NULL;
-    mesh->boundingRadius = R32MAX;
+    mesh->boundingRadius = sqrtf(3*CHUNK_SIZE*CHUNK_SIZE);
+    //mesh->boundingRadius = R32MAX;
     mesh->vertexStride = 32;
+
+    /*void* evb = malloc(indexCount*4*3);
+    glBindBuffer(GL_ARRAY_BUFFER, mesh->ElementBuffer);
+    glGetBufferSubData(GL_ARRAY_BUFFER, 0, indexCount*4*3, evb);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    for(int i=0; i < indexCount*3; i+=3)
+    {
+        printf("%d %d %d \n",((int*)evb)[i],((int*)evb)[i+1],((int*)evb)[i+2]);
+    }
+    free(evb);*/
+
+    /*int size = triangleCount*sizeof(Vec4);
+    void* vvb = malloc(size);
+    Vec4* vertd = (Vec4*)vvb;
+    glBindBuffer(GL_ARRAY_BUFFER, mesh->AttribBuffer);
+    glGetBufferSubData(GL_ARRAY_BUFFER, 0, size, vvb);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    for(int i=0; i < triangleCount; i++)
+    {
+        printf("%f %f %f %f \n",vertd[i].x,vertd[i].y,vertd[i].z,vertd[i].w);
+    }
+    free(vvb);*/
+
+    glBindVertexArray(mesh->VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, mesh->AttribBuffer);
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 32, 0);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 32, (GLvoid*)16);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ElementBuffer);
+    glBindVertexArray(0);
+    //glBindBuffer(GL_ARRAY_BUFFER, 0);
+    //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     glFinish();
     struct timespec last;
     clock_gettime(CLOCK_MONOTONIC, &last);
     float ms = (last.tv_sec-start.tv_sec)*1000.0f+(last.tv_nsec-start.tv_nsec)/1000000.0;
-    printf("Terrain gen time: %fms\n", ms);
+    printf("Terrain gen time: %fms\n (LOD: %d)", ms, lodLevel);
     //addEntity(state, chunk2 );*/
+    u32 difFromHighest = 4-lodLevel;
+    Vec3 offset = vec3(0.0f,-0.2f*difFromHighest,0.0f);
+    vec3Add(&origin, &offset, &origin);
+    setPosition(&tchunk->entity.transform, origin);
 }
 
-TerrainChunk loadChunk(Permanent_Storage* state, IVec3 chunkId)
+TerrainChunk loadChunk(Permanent_Storage* state, IVec3 chunkId, u32 lodLevel)
 {
     TerrainChunk ret;
     ret.chunkCoordinate = chunkId;
     ret.isAllocate = 1;
-    ret.origin = getChunkOrigin(chunkId, state->terrainGenState.voxelScale);
+    ret.origin = getChunkOrigin(chunkId);
+    ret.LODLevel = lodLevel;
 
     GLuint outBuffer;
     glGenBuffers(1, &outBuffer);
+    GLuint outElBuffer;
+    glGenBuffers(1, &outElBuffer);
+    GLuint VAO;
+    glGenVertexArrays(1, &VAO);
 
     ArrayMesh mesh;
     mesh.AttribBuffer = outBuffer;
-    loadChunkVertices(state, ret.origin, &mesh);
+    mesh.ElementBuffer = outElBuffer;
+    mesh.VAO = VAO;
 
     Entity *vt = &ret.entity;
     vt->material.numTextures = 0;
@@ -975,6 +1167,8 @@ TerrainChunk loadChunk(Permanent_Storage* state, IVec3 chunkId)
     vt->amesh = mesh;
     vt->entityType = 1;
     transformInit(&vt->transform);
+
+    reloadChunk(state, ret.origin, &ret, lodLevel);
 
     return ret;
 }
@@ -984,7 +1178,8 @@ void display(EngineMemory *mem, Input *input, float dt)
 {
     Permanent_Storage *state = (Permanent_Storage*)mem->gameState;
 
-    findHighestPriorityChunk(state, &state->main_cam);
+    chunkCheck(state, &state->main_cam);
+    //findHighestPriorityChunk(state, &state->main_cam);
 
     timeSinceStart += dt;
 
@@ -1025,7 +1220,11 @@ void display(EngineMemory *mem, Input *input, float dt)
 
     cameraRecalculateMatrices(&state->main_cam);
 
-    state->game.sunDir = vec4(0.0f, 0.848f, -0.53f, 0.67f);
+    /*Vec3 vector = vec3(0.0,0.316,0.9486);
+    Vec3 res = vec3Normalized(&vector);
+    printf("VEC %f, %f, %f\n",res.x,res.y,res.z);*/
+
+    state->game.sunDir = vec4(0.0f,0.316f,0.9486f, 0.67f);
 
     state->game.wall.transform.rotation = quaternionFromAxisAngle( vec3(0.f,1.f,0.f),((float)frames/200.0f));
     state->game.wall2.transform.rotation = quaternionFromAxisAngle( vec3(0.f,1.f,0.f),((float)300.0f));
@@ -1041,7 +1240,9 @@ void display(EngineMemory *mem, Input *input, float dt)
     Vec3 by = cameraCalculateForwardDirection(cam);
     vec3Scale(&by, &by, distanceFC);
     //vec3Add(&bpos, &cam->position, &by);
-    r32 depth = openglGetScreenDepth(&state->tstorage->glState, vec2(0.0f,0.0f));
+    // TODO: apparently super slow
+    //r32 depth = openglGetScreenDepth(&state->tstorage->glState, vec2(0.0f,0.0f));
+    r32 depth = 1.0f;
     depth *= 2.0f;
     depth -= 1.0f;
     //depth = cameraLinearizeDepth(cam, depth);
@@ -1157,7 +1358,8 @@ void display(EngineMemory *mem, Input *input, float dt)
         glUniform1fARB(        state->game.skyShader.skydome.fScaleOverScaleDepth  , (1.0f / (outerR - innerR)) / 0.25f);//
         glDisable(GL_CULL_FACE);
         glEnable(GL_BLEND);
-        renderMesh(&state->game.dome.mesh);
+        if(!state->tstorage->glState.night)
+            renderMesh(&state->game.dome.mesh);
         glEnable(GL_CULL_FACE);
         glDisable(GL_BLEND);
         glUseProgram(0);
